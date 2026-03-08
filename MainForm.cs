@@ -83,17 +83,15 @@ public sealed class MainForm : Form
         int ay = (int)((long)y * 65535 / sh);
         int sz = Marshal.SizeOf<INPUT>();
 
-        // Move cursor to position
         var move = new INPUT[1];
         move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
         SendInput(1, move, sz);
-        Thread.Sleep(30);
+        Thread.Sleep(15);
 
-        // Click
         var down = new INPUT[1];
         down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
         SendInput(1, down, sz);
-        Thread.Sleep(50);
+        Thread.Sleep(30);
 
         var up = new INPUT[1];
         up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
@@ -104,34 +102,9 @@ public sealed class MainForm : Form
     {
         try
         {
-            // User pressed Escape. It may have opened the side panel (normal)
-            // or closed a sub-state (build/inventory/map). Either way:
-            // wait for that to finish, then send our own Escape.
-            // If menu was already open → our Escape closes it, we send another to reopen.
-            // If sub-state closed → our Escape opens the menu. Done.
-            // Net effect: we always end with the side panel open.
-
-            Thread.Sleep(300);
-
-            // Send Escape to guarantee side panel opens
-            PressKey(0x1B);
-            Thread.Sleep(cfg.EscapeDelayMs);
-
-            // If user's Escape already opened the panel, ours just closed it.
-            // Click the exit icon — if panel is open it works, if not it's harmless.
-            ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            Thread.Sleep(cfg.ClickDelayMs);
-
-            ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            Thread.Sleep(cfg.ClickDelayMs);
-
-            ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
-            Thread.Sleep(200);
-
-            // Safety pass: if our Escape toggled the menu wrong way,
-            // send Escape again and redo clicks
-            PressKey(0x1B);
-            Thread.Sleep(cfg.EscapeDelayMs);
+            // User pressed Escape — wait for menu, then click through.
+            // Single clean pass. All delays are user-tunable.
+            Thread.Sleep(cfg.StartDelayMs);
 
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
             Thread.Sleep(cfg.ClickDelayMs);
@@ -151,7 +124,7 @@ public sealed class MainForm : Form
     //  Config
     // ═══════════════════════════════════════════════════════════════════════
 
-    const int CFG_VERSION = 7;
+    const int CFG_VERSION = 8;
 
     sealed class Config
     {
@@ -159,8 +132,8 @@ public sealed class MainForm : Form
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
-        public int EscapeDelayMs { get; set; } = 800;
-        public int ClickDelayMs { get; set; } = 300;
+        public int StartDelayMs { get; set; } = 500;
+        public int ClickDelayMs { get; set; } = 200;
         public bool MinimizeToTray { get; set; } = true;
     }
 
@@ -194,7 +167,7 @@ public sealed class MainForm : Form
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Theme Colors — Ultra-minimalist light
+    //  Theme Colors
     // ═══════════════════════════════════════════════════════════════════════
 
     static readonly Color C_Bg      = Color.White;
@@ -215,21 +188,21 @@ public sealed class MainForm : Form
     readonly Label _lblStatus;
     readonly Guna2ToggleSwitch _togOn, _togTray;
     readonly Guna2CirclePictureBox _statusDot;
+    readonly Guna2TextBox _txtStart, _txtClick;
     readonly NotifyIcon _tray;
     readonly System.Windows.Forms.Timer _escTimer;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  UI — Ultra-minimalist light
+    //  UI
     // ═══════════════════════════════════════════════════════════════════════
 
     public MainForm()
     {
         _cfg = LoadCfg();
 
-        // ── Borderless white form ──
         Text = "FastLeave";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(360, 340);
+        ClientSize = new Size(360, 420);
         BackColor = C_Bg;
         ForeColor = C_Text;
         Font = new Font("Segoe UI Variable Display", 10f);
@@ -238,7 +211,6 @@ public sealed class MainForm : Form
 
         LoadIcon();
 
-        // Rounded corners + light mode via DWM
         try
         {
             int dark = 0; DwmSetWindowAttribute(Handle, 20, ref dark, 4);
@@ -246,10 +218,10 @@ public sealed class MainForm : Form
         }
         catch { }
 
-        // ── Title bar (draggable) ──
+        // ── Title bar ──
         var titleBar = new Guna2Panel
         {
-            Bounds = new Rectangle(0, 0, 360, 56),
+            Bounds = new Rectangle(0, 0, 360, 52),
             BackColor = C_Bg,
             BorderRadius = 0,
         };
@@ -261,16 +233,16 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI Variable Display", 14f, FontStyle.Bold),
             ForeColor = C_Text,
             BackColor = Color.Transparent,
-            Location = new Point(24, 16), AutoSize = true,
+            Location = new Point(24, 14), AutoSize = true,
         };
 
         var lblVer = new Label
         {
-            Text = "v1.2.0",
+            Text = "v1.3.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Muted,
             BackColor = Color.Transparent,
-            Location = new Point(120, 22), AutoSize = true,
+            Location = new Point(120, 20), AutoSize = true,
         };
 
         var btnMin = new Guna2Button
@@ -282,7 +254,7 @@ public sealed class MainForm : Form
             HoverState = { FillColor = C_Light, ForeColor = C_Text },
             BorderRadius = 6,
             Size = new Size(32, 32),
-            Location = new Point(284, 12),
+            Location = new Point(284, 10),
         };
         btnMin.Click += (_, _) => WindowState = FormWindowState.Minimized;
 
@@ -295,69 +267,53 @@ public sealed class MainForm : Form
             HoverState = { FillColor = C_Red, ForeColor = Color.White },
             BorderRadius = 6,
             Size = new Size(32, 32),
-            Location = new Point(318, 12),
+            Location = new Point(318, 10),
         };
         btnClose.Click += (_, _) => Close();
 
         titleBar.Controls.AddRange([lblTitle, lblVer, btnMin, btnClose]);
         Controls.Add(titleBar);
 
-        // ── Trigger section ──
-        var lblTrigHeader = new Label
-        {
-            Text = "TRIGGER",
-            Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
-            ForeColor = C_Muted,
-            BackColor = C_Bg,
-            Location = new Point(28, 72), AutoSize = true,
-        };
-        Controls.Add(lblTrigHeader);
+        // ── Trigger ──
+        Controls.Add(MakeHeader("TRIGGER", 28, 66));
 
-        var lblTrigVal = new Label
+        Controls.Add(new Label
         {
             Text = "ESC",
             Font = new Font("Segoe UI Variable Display", 28f, FontStyle.Bold),
-            ForeColor = C_Text,
-            BackColor = C_Bg,
-            Location = new Point(24, 92), AutoSize = true,
-        };
-        Controls.Add(lblTrigVal);
+            ForeColor = C_Text, BackColor = C_Bg,
+            Location = new Point(24, 84), AutoSize = true,
+        });
 
-        var lblTrigDesc = new Label
+        Controls.Add(new Label
         {
             Text = "Press Escape in-game to leave match",
             Font = new Font("Segoe UI Variable Display", 8.5f),
-            ForeColor = C_Muted,
-            BackColor = C_Bg,
-            Location = new Point(28, 136), AutoSize = true,
-        };
-        Controls.Add(lblTrigDesc);
+            ForeColor = C_Muted, BackColor = C_Bg,
+            Location = new Point(28, 128), AutoSize = true,
+        });
 
-        // ── Settings section ──
-        var lblSettingsHeader = new Label
-        {
-            Text = "SETTINGS",
-            Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
-            ForeColor = C_Muted,
-            BackColor = C_Bg,
-            Location = new Point(28, 176), AutoSize = true,
-        };
-        Controls.Add(lblSettingsHeader);
+        // ── Timing ──
+        Controls.Add(MakeHeader("TIMING (ms)", 28, 162));
 
-        var lblTogOn = new Label
-        {
-            Text = "Enabled",
-            Font = new Font("Segoe UI Variable Display", 9.5f),
-            ForeColor = C_Text,
-            BackColor = C_Bg,
-            Location = new Point(28, 204), AutoSize = true,
-        };
-        Controls.Add(lblTogOn);
+        Controls.Add(MakeLabel("Start delay", 28, 186));
+        _txtStart = MakeNumBox(_cfg.StartDelayMs, 264, 182);
+        _txtStart.TextChanged += (_, _) => { if (int.TryParse(_txtStart.Text, out int v) && v >= 0) { _cfg.StartDelayMs = v; SaveCfg(_cfg); } };
+        Controls.Add(_txtStart);
 
+        Controls.Add(MakeLabel("Click delay", 28, 220));
+        _txtClick = MakeNumBox(_cfg.ClickDelayMs, 264, 216);
+        _txtClick.TextChanged += (_, _) => { if (int.TryParse(_txtClick.Text, out int v) && v >= 0) { _cfg.ClickDelayMs = v; SaveCfg(_cfg); } };
+        Controls.Add(_txtClick);
+
+        // ── Settings ──
+        Controls.Add(MakeHeader("SETTINGS", 28, 258));
+
+        Controls.Add(MakeLabel("Enabled", 28, 282));
         _togOn = new Guna2ToggleSwitch
         {
             Checked = true,
-            Location = new Point(288, 202),
+            Location = new Point(288, 280),
             Size = new Size(44, 22),
             CheckedState = { FillColor = C_Text, InnerColor = Color.White },
             UncheckedState = { FillColor = C_Light, InnerColor = Color.White },
@@ -365,20 +321,11 @@ public sealed class MainForm : Form
         _togOn.CheckedChanged += (_, _) => { _on = _togOn.Checked; UpdateStatus(); };
         Controls.Add(_togOn);
 
-        var lblTogTray = new Label
-        {
-            Text = "Minimize to tray",
-            Font = new Font("Segoe UI Variable Display", 9.5f),
-            ForeColor = C_Text,
-            BackColor = C_Bg,
-            Location = new Point(28, 238), AutoSize = true,
-        };
-        Controls.Add(lblTogTray);
-
+        Controls.Add(MakeLabel("Minimize to tray", 28, 314));
         _togTray = new Guna2ToggleSwitch
         {
             Checked = _cfg.MinimizeToTray,
-            Location = new Point(288, 236),
+            Location = new Point(288, 312),
             Size = new Size(44, 22),
             CheckedState = { FillColor = C_Text, InnerColor = Color.White },
             UncheckedState = { FillColor = C_Light, InnerColor = Color.White },
@@ -390,7 +337,7 @@ public sealed class MainForm : Form
         _statusDot = new Guna2CirclePictureBox
         {
             Size = new Size(10, 10),
-            Location = new Point(28, 290),
+            Location = new Point(28, 362),
             BackColor = C_Bg,
             ShadowDecoration = { Enabled = false },
         };
@@ -400,7 +347,7 @@ public sealed class MainForm : Form
         {
             Font = new Font("Segoe UI Variable Display", 9f, FontStyle.Bold),
             BackColor = C_Bg,
-            Location = new Point(44, 285), AutoSize = true,
+            Location = new Point(44, 357), AutoSize = true,
         };
         UpdateStatus();
         Controls.Add(_lblStatus);
@@ -419,7 +366,7 @@ public sealed class MainForm : Form
         };
         _tray.DoubleClick += (_, _) => Restore();
 
-        // ── Escape key poll timer (30ms) ──
+        // ── Escape poll (30ms) ──
         _escTimer = new System.Windows.Forms.Timer { Interval = 30 };
         _escTimer.Tick += PollEscape;
         _escTimer.Start();
@@ -431,7 +378,6 @@ public sealed class MainForm : Form
 
     void PollEscape(object? s, EventArgs e)
     {
-        // Only trigger when Escape pressed AND Fortnite is the active window
         if (_on && (GetAsyncKeyState(0x1B) & 1) != 0 &&
             IsFortniteActive() &&
             Interlocked.CompareExchange(ref _running, 1, 0) == 0)
@@ -450,6 +396,35 @@ public sealed class MainForm : Form
     // ═══════════════════════════════════════════════════════════════════════
     //  UI Helpers
     // ═══════════════════════════════════════════════════════════════════════
+
+    static Label MakeHeader(string text, int x, int y) => new()
+    {
+        Text = text,
+        Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
+        ForeColor = C_Muted, BackColor = C_Bg,
+        Location = new Point(x, y), AutoSize = true,
+    };
+
+    static Label MakeLabel(string text, int x, int y) => new()
+    {
+        Text = text,
+        Font = new Font("Segoe UI Variable Display", 9.5f),
+        ForeColor = C_Text, BackColor = C_Bg,
+        Location = new Point(x, y), AutoSize = true,
+    };
+
+    static Guna2TextBox MakeNumBox(int value, int x, int y) => new()
+    {
+        Text = value.ToString(),
+        Font = new Font("Segoe UI Variable Display", 9.5f),
+        ForeColor = C_Text,
+        FillColor = C_Bg,
+        BorderColor = C_Light,
+        BorderRadius = 6,
+        Size = new Size(68, 30),
+        Location = new Point(x, y),
+        TextAlign = HorizontalAlignment.Center,
+    };
 
     void LoadIcon()
     {
