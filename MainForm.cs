@@ -10,12 +10,9 @@ public sealed class MainForm : Form
     //  Win32 Interop
     // ═══════════════════════════════════════════════════════════════════════
 
-    [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mod, uint vk);
-    [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] i, int sz);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
-    [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr hWnd, char[] buf, int max);
@@ -37,10 +34,8 @@ public sealed class MainForm : Form
         public ushort wVk, wScan; public uint dwFlags, time; public IntPtr extra;
     }
 
-    const uint INPUT_KB = 1, INPUT_MOUSE = 0;
-    const uint KEYUP = 0x0002;
+    const uint INPUT_MOUSE = 0;
     const uint MDOWN = 0x0002, MUP = 0x0004, MMOVE = 0x0001, MABS = 0x8000;
-    const int WM_HOTKEY = 0x0312, HK_ID = 1;
 
     // ═══════════════════════════════════════════════════════════════════════
     //  Macro Core
@@ -56,20 +51,11 @@ public sealed class MainForm : Form
             if (new string(buf).TrimEnd('\0') == "UnrealWindow")
             {
                 found = hWnd;
-                return false; // stop
+                return false;
             }
             return true;
         }, IntPtr.Zero);
         if (found != IntPtr.Zero) SetForegroundWindow(found);
-    }
-
-    static void PressKey(ushort vk)
-    {
-        ushort scan = (ushort)MapVirtualKey(vk, 0);
-        var a = new INPUT[2];
-        a[0] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, wScan = scan } } };
-        a[1] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, wScan = scan, dwFlags = KEYUP } } };
-        SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
     static void ClickAt(int x, int y)
@@ -79,18 +65,19 @@ public sealed class MainForm : Form
         int ay = (int)((long)y * 65535 / sh);
         int sz = Marshal.SizeOf<INPUT>();
 
-        // Move to position first
+        // Move cursor to position
         var move = new INPUT[1];
         move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
         SendInput(1, move, sz);
         Thread.Sleep(20);
 
-        // Click
+        // Mouse down
         var down = new INPUT[1];
         down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
         SendInput(1, down, sz);
         Thread.Sleep(40);
 
+        // Mouse up
         var up = new INPUT[1];
         up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
         SendInput(1, up, sz);
@@ -100,15 +87,9 @@ public sealed class MainForm : Form
     {
         try
         {
-            // Ensure Fortnite is the foreground window before sending input
+            // User already pressed Escape — the side panel is opening.
+            // Just wait for it, then click through the 3 buttons.
             FocusFortnite();
-            Thread.Sleep(50);
-
-            // Escape twice — first closes any sub-state (build, inventory, map),
-            // second opens the side panel menu
-            PressKey(0x1B);
-            Thread.Sleep(200);
-            PressKey(0x1B);
             Thread.Sleep(cfg.EscapeDelayMs);
 
             // Click exit door icon
@@ -132,12 +113,11 @@ public sealed class MainForm : Form
     //  Config
     // ═══════════════════════════════════════════════════════════════════════
 
-    const int CFG_VERSION = 6;
+    const int CFG_VERSION = 7;
 
     sealed class Config
     {
         public int Version { get; set; } = CFG_VERSION;
-        public uint HotkeyVk { get; set; } = 0x75;
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
@@ -161,7 +141,7 @@ public sealed class MainForm : Form
             var c = JsonSerializer.Deserialize<Config>(File.ReadAllText(CfgPath()), _jo) ?? new();
             if (c.Version < CFG_VERSION)
             {
-                var fresh = new Config { HotkeyVk = c.HotkeyVk, MinimizeToTray = c.MinimizeToTray };
+                var fresh = new Config { MinimizeToTray = c.MinimizeToTray };
                 SaveCfg(fresh);
                 return fresh;
             }
@@ -174,28 +154,6 @@ public sealed class MainForm : Form
     {
         try { File.WriteAllText(CfgPath(), JsonSerializer.Serialize(c, _jo)); } catch { }
     }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  VK names
-    // ═══════════════════════════════════════════════════════════════════════
-
-    static string VkName(uint vk) => vk switch
-    {
-        0x08 => "Backspace", 0x09 => "Tab", 0x0D => "Enter", 0x1B => "Escape",
-        0x20 => "Space", 0x21 => "PgUp", 0x22 => "PgDn", 0x23 => "End",
-        0x24 => "Home", 0x2D => "Ins", 0x2E => "Del", 0x13 => "Pause",
-        >= 0x30 and <= 0x39 => ((char)vk).ToString(),
-        >= 0x41 and <= 0x5A => ((char)vk).ToString(),
-        >= 0x60 and <= 0x69 => $"Num{vk - 0x60}",
-        >= 0x70 and <= 0x7B => $"F{vk - 0x70 + 1}",
-        _ => $"0x{vk:X2}"
-    };
-
-    static readonly int[] ScanVks = [
-        ..Enumerable.Range(0x70, 12), ..Enumerable.Range(0x30, 10),
-        ..Enumerable.Range(0x41, 26), ..Enumerable.Range(0x60, 10),
-        0x21, 0x22, 0x23, 0x24, 0x2D, 0x2E, 0x13, 0x08, 0x09, 0x20
-    ];
 
     // ═══════════════════════════════════════════════════════════════════════
     //  Theme Colors
@@ -217,16 +175,15 @@ public sealed class MainForm : Form
     // ═══════════════════════════════════════════════════════════════════════
 
     readonly Config _cfg;
-    bool _on = true, _capturing;
+    bool _on = true;
     int _running;
 
-    readonly Label _lblKeyHeader, _lblKeyVal, _lblStatus, _lblSettingsHeader;
-    readonly Guna2Button _btnSet;
+    readonly Label _lblStatus, _lblSettingsHeader;
     readonly Guna2ToggleSwitch _togOn, _togTray;
     readonly Label _lblTogOn, _lblTogTray;
     readonly Guna2CirclePictureBox _statusDot;
     readonly NotifyIcon _tray;
-    readonly System.Windows.Forms.Timer _capTimer;
+    readonly System.Windows.Forms.Timer _escTimer;
 
     // ═══════════════════════════════════════════════════════════════════════
     //  UI — Guna2 Modern Dark
@@ -239,7 +196,7 @@ public sealed class MainForm : Form
         // ── Borderless dark form ──
         Text = "FastLeave";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(400, 380);
+        ClientSize = new Size(400, 310);
         BackColor = C_Bg;
         ForeColor = C_Text;
         Font = new Font("Segoe UI Variable Display", 10f);
@@ -276,7 +233,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v0.6.0",
+            Text = "v1.0.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
@@ -299,46 +256,41 @@ public sealed class MainForm : Form
         titleBar.Controls.AddRange([lblTitle, lblVer, btnClose]);
         Controls.Add(titleBar);
 
-        // ── Hotkey Card ──
-        var hotkeyCard = MakeCard(20, 60, 360, 80);
+        // ── Trigger Card ──
+        var triggerCard = MakeCard(20, 60, 360, 70);
 
-        _lblKeyHeader = new Label
+        var lblTrigHeader = new Label
         {
-            Text = "HOTKEY",
+            Text = "TRIGGER",
             Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
             Location = new Point(16, 12), AutoSize = true,
         };
 
-        _lblKeyVal = new Label
+        var lblTrigVal = new Label
         {
-            Text = VkName(_cfg.HotkeyVk),
+            Text = "ESC",
             Font = new Font("Segoe UI Variable Display", 18f, FontStyle.Bold),
             ForeColor = C_Accent,
             BackColor = Color.Transparent,
-            Location = new Point(14, 34), AutoSize = true,
+            Location = new Point(14, 30), AutoSize = true,
         };
 
-        _btnSet = new Guna2Button
+        var lblTrigDesc = new Label
         {
-            Text = "Set Key",
-            Font = new Font("Segoe UI Variable Display", 9f, FontStyle.Bold),
-            ForeColor = Color.White,
-            FillColor = C_Accent,
-            HoverState = { FillColor = C_AccHi },
-            BorderRadius = 8,
-            Size = new Size(100, 36),
-            Location = new Point(244, 24),
-            Cursor = Cursors.Hand,
+            Text = "Press Escape in-game to leave match",
+            Font = new Font("Segoe UI Variable Display", 8.5f),
+            ForeColor = C_Sub,
+            BackColor = Color.Transparent,
+            Location = new Point(80, 38), AutoSize = true,
         };
-        _btnSet.Click += (_, _) => StartCapture();
 
-        hotkeyCard.Controls.AddRange([_lblKeyHeader, _lblKeyVal, _btnSet]);
-        Controls.Add(hotkeyCard);
+        triggerCard.Controls.AddRange([lblTrigHeader, lblTrigVal, lblTrigDesc]);
+        Controls.Add(triggerCard);
 
         // ── Settings Card ──
-        var settingsCard = MakeCard(20, 152, 360, 112);
+        var settingsCard = MakeCard(20, 142, 360, 112);
 
         _lblSettingsHeader = new Label
         {
@@ -349,7 +301,6 @@ public sealed class MainForm : Form
             Location = new Point(16, 12), AutoSize = true,
         };
 
-        // Enabled toggle
         _lblTogOn = new Label
         {
             Text = "Enabled",
@@ -369,7 +320,6 @@ public sealed class MainForm : Form
         };
         _togOn.CheckedChanged += (_, _) => { _on = _togOn.Checked; UpdateStatus(); };
 
-        // Tray toggle
         _lblTogTray = new Label
         {
             Text = "Minimize to tray",
@@ -393,20 +343,20 @@ public sealed class MainForm : Form
         Controls.Add(settingsCard);
 
         // ── Status Card ──
-        var statusCard = MakeCard(20, 276, 360, 60);
+        var statusCard = MakeCard(20, 266, 360, 30);
 
         _statusDot = new Guna2CirclePictureBox
         {
-            Size = new Size(14, 14),
-            Location = new Point(18, 23),
+            Size = new Size(10, 10),
+            Location = new Point(16, 10),
             ShadowDecoration = { Enabled = false },
         };
 
         _lblStatus = new Label
         {
-            Font = new Font("Segoe UI Variable Display", 12f, FontStyle.Bold),
+            Font = new Font("Segoe UI Variable Display", 9f, FontStyle.Bold),
             BackColor = Color.Transparent,
-            Location = new Point(40, 18), AutoSize = true,
+            Location = new Point(32, 6), AutoSize = true,
         };
         UpdateStatus();
 
@@ -427,16 +377,23 @@ public sealed class MainForm : Form
         };
         _tray.DoubleClick += (_, _) => Restore();
 
-        // ── Key capture timer ──
-        _capTimer = new System.Windows.Forms.Timer { Interval = 40 };
-        _capTimer.Tick += CaptureKey;
+        // ── Escape key poll timer (30ms) ──
+        _escTimer = new System.Windows.Forms.Timer { Interval = 30 };
+        _escTimer.Tick += PollEscape;
+        _escTimer.Start();
+    }
 
-        // ── Register hotkey ──
-        if (!RegisterHotKey(Handle, HK_ID, 0, _cfg.HotkeyVk))
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Escape key polling
+    // ═══════════════════════════════════════════════════════════════════════
+
+    void PollEscape(object? s, EventArgs e)
+    {
+        // Check if Escape was pressed (bit 0 = toggled since last call)
+        if (_on && (GetAsyncKeyState(0x1B) & 1) != 0 &&
+            Interlocked.CompareExchange(ref _running, 1, 0) == 0)
         {
-            _lblStatus.Text = "HOTKEY CONFLICT";
-            _lblStatus.ForeColor = C_Red;
-            _statusDot.BackColor = C_Red;
+            Task.Run(() => RunLeave(_cfg));
         }
     }
 
@@ -497,61 +454,13 @@ public sealed class MainForm : Form
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Hotkey dispatch
-    // ═══════════════════════════════════════════════════════════════════════
-
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == WM_HOTKEY && m.WParam == HK_ID &&
-            _on && Interlocked.CompareExchange(ref _running, 1, 0) == 0)
-        {
-            Task.Run(() => RunLeave(_cfg));
-        }
-        base.WndProc(ref m);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  Key capture
-    // ═══════════════════════════════════════════════════════════════════════
-
-    void StartCapture()
-    {
-        _capturing = true;
-        _btnSet.Text = "Press...";
-        _btnSet.FillColor = C_AccHi;
-        UnregisterHotKey(Handle, HK_ID);
-        _capTimer.Start();
-    }
-
-    void CaptureKey(object? s, EventArgs e)
-    {
-        if (!_capturing) return;
-        foreach (int vk in ScanVks)
-        {
-            if ((GetAsyncKeyState(vk) & 1) != 0)
-            {
-                _cfg.HotkeyVk = (uint)vk;
-                SaveCfg(_cfg);
-                RegisterHotKey(Handle, HK_ID, 0, _cfg.HotkeyVk);
-                _lblKeyVal.Text = VkName(_cfg.HotkeyVk);
-                _btnSet.Text = "Set Key";
-                _btnSet.FillColor = C_Accent;
-                _capturing = false;
-                _capTimer.Stop();
-                return;
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
     //  Cleanup
     // ═══════════════════════════════════════════════════════════════════════
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        UnregisterHotKey(Handle, HK_ID);
-        _capTimer.Stop();
-        _capTimer.Dispose();
+        _escTimer.Stop();
+        _escTimer.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
         base.OnFormClosing(e);

@@ -1,6 +1,6 @@
 # FastLeave
 
-Fortnite leave-match macro for Windows. Press a hotkey (default F6) to automatically leave a match via the in-game menu.
+Fortnite leave-match macro for Windows. Press Escape in-game — the macro detects it and automatically clicks through the leave menu.
 
 ## Tech Stack
 
@@ -19,23 +19,21 @@ icon.ico           — App icon (door + arrow + running figure)
 fastleave.json     — Runtime config (gitignored, created on first run)
 ```
 
-## Macro Sequence
+## How It Works
 
-The macro performs 4 steps in Fortnite's side panel:
+The user presses Escape in Fortnite (which opens the side panel). The macro detects the Escape keypress via `GetAsyncKeyState` polling (30ms interval) and automatically clicks through 3 buttons:
 
-1. **Escape** — opens the side panel menu
-2. **Click exit icon** — top-right door icon at (1832, 76)
-3. **Click "Return to lobby"** — button at (1570, 384)
-4. **Click "Yes"** — confirmation at (1574, 922)
+1. **Click exit icon** — top-right door icon at (1832, 76)
+2. **Click "Return to lobby"** — button at (1570, 384)
+3. **Click "Yes"** — confirmation at (1574, 922)
 
-The macro runs **twice** automatically to handle cases where the first Escape closes a sub-state (build mode, inventory, map) instead of opening the leave menu.
+No hotkey registration needed — the macro piggybacks on the user's natural Escape press. Toggle on/off from the UI.
 
 ## Key Technical Decisions
 
-- **SendInput with MOUSEEVENTF_ABSOLUTE** for mouse movement — SetCursorPos doesn't register in Fortnite's input system
-- **GetAsyncKeyState polling** for hotkey capture — WM_KEYDOWN doesn't work when a button has focus
-- **User interrupt detection** — checks WASD, arrows, mouse buttons, Escape, Space every 15ms during waits. If user touches any input, macro aborts immediately
-- **FocusFortnite via EnumWindows** — finds UnrealWindow class with "Fortnite" in title, calls SetForegroundWindow before macro
+- **GetAsyncKeyState polling (30ms)** — detects Escape without blocking it; key still reaches Fortnite
+- **SendInput with MOUSEEVENTF_ABSOLUTE** for mouse clicks — reliable with game UIs
+- **FocusFortnite via EnumWindows** — finds UnrealWindow class, calls SetForegroundWindow before clicking
 - **Environment.Exit(0)** in OnFormClosing — prevents background thread from keeping process alive
 - **highestAvailable** manifest (not requireAdministrator) — requireAdministrator blocks silent launch
 
@@ -43,11 +41,10 @@ The macro runs **twice** automatically to handle cases where the first Escape cl
 
 ```json
 {
-  "HotkeyVk": 117,        // F6
   "ExitBtn": [1832, 76],
   "ReturnBtn": [1570, 384],
   "YesBtn": [1574, 922],
-  "EscapeDelayMs": 700,
+  "EscapeDelayMs": 800,
   "ClickDelayMs": 300,
   "MinimizeToTray": true
 }
@@ -68,21 +65,22 @@ Output: `publish/fastleave.exe` (~50MB self-contained single file)
 Update in **both** places:
 
 1. `FastLeave.csproj` line `<Version>X.Y.Z</Version>`
-2. `MainForm.cs` the `_lblVer` label: `Text = "vX.Y.Z"`
+2. `MainForm.cs` the `lblVer` label: `Text = "vX.Y.Z"`
 
 Version scheme: `0.X.Y` during development, `1.0.0` for stable release.
 
-- Bump **patch** (0.1.0 → 0.1.1) for small fixes, timing tweaks, coordinate changes
-- Bump **minor** (0.1.0 → 0.2.0) for new features, UI changes, logic rewrites
-- Current version: **0.6.0** (active development)
+- Bump **patch** (1.0.0 → 1.0.1) for small fixes, timing tweaks, coordinate changes
+- Bump **minor** (1.0.0 → 1.1.0) for new features, UI changes, logic rewrites
+- Current version: **1.0.0**
 
 ## Known Issues & Fixes History
 
 - Mouse teleport (SetCursorPos) not registering in game → use SendInput absolute
-- First Escape may close sub-state instead of opening menu → run macro sequence twice
 - App not closing (file locked) → Environment.Exit(0) on close
 - Self-contained exe "dll not found" → file was corrupted during copy, re-publish
 - DPI scaling wrong coordinates → GetSystemMetrics with DPI-aware app + PerMonitorV2
+- BlockInput blocks mouse_event/SetCursorPos (only SendInput bypasses it) → use SendInput for everything
+- RegisterHotKey swallows keypress → switched to GetAsyncKeyState polling
 
 ## Reference Screenshots
 
