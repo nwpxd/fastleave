@@ -184,7 +184,7 @@ public sealed class MainForm : Form
     // ═══════════════════════════════════════════════════════════════════════
 
     readonly Config _cfg;
-    bool _on = true;
+    bool _on = true, _escDown;
     int _running;
 
     readonly Label _lblStatus;
@@ -244,7 +244,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v1.4.1",
+            Text = "v1.4.2",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Muted,
             BackColor = Color.Transparent,
@@ -394,11 +394,13 @@ public sealed class MainForm : Form
 
     void PollEscape(object? s, EventArgs e)
     {
-        if (_on && (GetAsyncKeyState(0x1B) & 1) != 0 &&
+        bool down = (GetAsyncKeyState(0x1B) & 0x8000) != 0;
+        if (down && !_escDown && _on &&
             Interlocked.CompareExchange(ref _running, 1, 0) == 0)
         {
             Task.Run(() => RunLeave(_cfg));
         }
+        _escDown = down;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
