@@ -84,29 +84,22 @@ public sealed class MainForm : Form
         int ay = (int)((long)y * 65535 / sh);
         int sz = Marshal.SizeOf<INPUT>();
 
-        // Move + double-click for reliability (all via SendInput — bypasses BlockInput)
-        for (int i = 0; i < 2; i++)
-        {
-            var a = new INPUT[3];
-            a[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
-            a[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
-            a[2] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
-            SendInput(3, a, sz);
-            if (i == 0) Thread.Sleep(30);
-        }
+        // Move + click in one shot
+        var a = new INPUT[3];
+        a[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
+        a[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+        a[2] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
+        SendInput(3, a, sz);
     }
 
     void RunLeave(Config cfg)
     {
         try
         {
-            // Block physical input so user can't interfere.
-            // SendInput bypasses BlockInput — our clicks go through.
-            BlockInput(true);
-
-            // User pressed Escape — wait for menu, then click through.
+            // Wait for Escape to register and menu to open
             Thread.Sleep(cfg.StartDelayMs);
 
+            // Click exit icon → Return to lobby → Yes
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
             Thread.Sleep(cfg.ClickDelayMs);
 
@@ -117,7 +110,6 @@ public sealed class MainForm : Form
         }
         finally
         {
-            BlockInput(false);
             Interlocked.Exchange(ref _running, 0);
         }
     }
@@ -246,7 +238,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v1.5.0",
+            Text = "v1.5.1",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Muted,
             BackColor = Color.Transparent,
