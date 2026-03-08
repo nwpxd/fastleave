@@ -84,22 +84,27 @@ public sealed class MainForm : Form
     {
         try
         {
-            Thread.Sleep(50);
+            // Run twice: first pass closes any sub-state (build mode, inventory, map),
+            // second pass opens the actual leave menu and clicks through it.
+            for (int pass = 0; pass < 2; pass++)
+            {
+                Thread.Sleep(50);
 
-            // Step 1: Escape — open side panel
-            PressKey(0x1B);
-            if (!Wait(cfg.EscapeDelayMs)) return;
+                // Step 1: Escape — open side panel (or close sub-state on 1st pass)
+                PressKey(0x1B);
+                if (!Wait(cfg.EscapeDelayMs)) return;
 
-            // Step 2: Click exit door icon
-            ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            if (!Wait(cfg.ClickDelayMs)) return;
+                // Step 2: Click exit door icon
+                ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
+                if (!Wait(cfg.ClickDelayMs)) return;
 
-            // Step 3: Click "Return to lobby"
-            ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            if (!Wait(cfg.ClickDelayMs)) return;
+                // Step 3: Click "Return to lobby"
+                ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
+                if (!Wait(cfg.ClickDelayMs)) return;
 
-            // Step 4: Click "Yes"
-            ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
+                // Step 4: Click "Yes"
+                ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
+            }
         }
         finally
         {
@@ -255,7 +260,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v0.4.1",
+            Text = "v0.4.2",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,

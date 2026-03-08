@@ -74,7 +74,7 @@ Version scheme: `0.X.Y` during development, `1.0.0` for stable release.
 
 - Bump **patch** (0.1.0 → 0.1.1) for small fixes, timing tweaks, coordinate changes
 - Bump **minor** (0.1.0 → 0.2.0) for new features, UI changes, logic rewrites
-- Current version: **0.4.1** (active development)
+- Current version: **0.4.2** (active development)
 
 ## Known Issues & Fixes History
 
