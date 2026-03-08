@@ -163,7 +163,7 @@ public sealed class MainForm : Form
             // attempt 1's Escape only closed a sub-menu.
             // If attempt 1 already worked, we're in loading screen
             // and these inputs do nothing harmful.
-            if (!Wait(200)) return;
+            if (!Wait(100)) return;
             DoLeaveAttempt(cfg, cfg.EscapeDelayMs);
         }
         finally
@@ -182,8 +182,8 @@ public sealed class MainForm : Form
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
-        public int EscapeDelayMs { get; set; } = 700;
-        public int ClickDelayMs { get; set; } = 300;
+        public int EscapeDelayMs { get; set; } = 500;
+        public int ClickDelayMs { get; set; } = 150;
         public bool MinimizeToTray { get; set; } = true;
     }
 
@@ -351,7 +351,7 @@ public sealed class MainForm : Form
         // ── Version ──
         _lblVer = new Label
         {
-            Text = "v0.1.0",
+            Text = "v0.2.0",
             Font = new Font("Segoe UI", 7.5f),
             ForeColor = T.Dim,
             BackColor = Color.Transparent,
