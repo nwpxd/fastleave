@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Drawing.Drawing2D;
+using Guna.UI2.WinForms;
 
 namespace FastLeave;
 
@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     const int WM_HOTKEY = 0x0312, HK_ID = 1;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Macro Core
+    //  Macro Core — UNTOUCHED BACKEND LOGIC
     // ═══════════════════════════════════════════════════════════════════════
 
     static void PressKey(ushort vk)
@@ -100,8 +100,6 @@ public sealed class MainForm : Form
         return true;
     }
 
-    /// Single-attempt macro. Fortnite is already focused.
-    /// Moves cursor to target DURING the wait so it's ready when the UI appears.
     void RunLeave(Config cfg)
     {
         try
@@ -110,26 +108,23 @@ public sealed class MainForm : Form
 
             // Step 1: Escape — open side panel
             PressKey(0x1B);
-            // Move cursor to exit icon while waiting for menu to appear
             Thread.Sleep(100);
             MoveTo(cfg.ExitBtn[0], cfg.ExitBtn[1]);
             if (!Wait(cfg.EscapeDelayMs - 100)) return;
 
-            // Step 2: Click exit door icon — cursor is already there
+            // Step 2: Click exit door icon
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            // Move to "Return to lobby" while waiting for page transition
             Thread.Sleep(80);
             MoveTo(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
             if (!Wait(cfg.ClickDelayMs - 80)) return;
 
-            // Step 3: Click "Return to lobby" — cursor is already there
+            // Step 3: Click "Return to lobby"
             ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            // Move to "Yes" while waiting for confirmation dialog
             Thread.Sleep(80);
             MoveTo(cfg.YesBtn[0], cfg.YesBtn[1]);
             if (!Wait(cfg.ClickDelayMs - 80)) return;
 
-            // Step 4: Click "Yes" — cursor is already there
+            // Step 4: Click "Yes"
             ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
         }
         finally
@@ -147,7 +142,7 @@ public sealed class MainForm : Form
     sealed class Config
     {
         public int Version { get; set; } = CFG_VERSION;
-        public uint HotkeyVk { get; set; } = 0x75;         // F6
+        public uint HotkeyVk { get; set; } = 0x75;
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
@@ -171,7 +166,6 @@ public sealed class MainForm : Form
             var c = JsonSerializer.Deserialize<Config>(File.ReadAllText(CfgPath()), _jo) ?? new();
             if (c.Version < CFG_VERSION)
             {
-                // Keep user's hotkey, reset timing to new defaults
                 var fresh = new Config { HotkeyVk = c.HotkeyVk, MinimizeToTray = c.MinimizeToTray };
                 SaveCfg(fresh);
                 return fresh;
@@ -209,23 +203,19 @@ public sealed class MainForm : Form
     ];
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Theme
+    //  Theme Colors
     // ═══════════════════════════════════════════════════════════════════════
 
-    static class T
-    {
-        public static readonly Color Bg       = Color.FromArgb(12, 12, 16);
-        public static readonly Color Card     = Color.FromArgb(22, 22, 28);
-        public static readonly Color CardHi   = Color.FromArgb(30, 30, 38);
-        public static readonly Color Border   = Color.FromArgb(42, 42, 52);
-        public static readonly Color Text     = Color.FromArgb(240, 240, 245);
-        public static readonly Color Sub      = Color.FromArgb(160, 160, 175);
-        public static readonly Color Dim      = Color.FromArgb(90, 90, 105);
-        public static readonly Color Accent   = Color.FromArgb(90, 95, 238);
-        public static readonly Color AccentHi = Color.FromArgb(120, 125, 255);
-        public static readonly Color Green    = Color.FromArgb(34, 197, 94);
-        public static readonly Color Red      = Color.FromArgb(239, 68, 68);
-    }
+    static readonly Color C_Bg      = ColorTranslator.FromHtml("#1E1E1E");
+    static readonly Color C_Card    = ColorTranslator.FromHtml("#252526");
+    static readonly Color C_Border  = ColorTranslator.FromHtml("#333333");
+    static readonly Color C_Text    = ColorTranslator.FromHtml("#E0E0E0");
+    static readonly Color C_Sub     = ColorTranslator.FromHtml("#9E9E9E");
+    static readonly Color C_Dim     = ColorTranslator.FromHtml("#666666");
+    static readonly Color C_Accent  = ColorTranslator.FromHtml("#5C5CFF");
+    static readonly Color C_AccHi   = ColorTranslator.FromHtml("#7B7BFF");
+    static readonly Color C_Green   = ColorTranslator.FromHtml("#22C55E");
+    static readonly Color C_Red     = ColorTranslator.FromHtml("#EF4444");
 
     // ═══════════════════════════════════════════════════════════════════════
     //  State
@@ -235,148 +225,197 @@ public sealed class MainForm : Form
     bool _on = true, _capturing;
     int _running;
 
-    readonly Label _lblKey, _lblKeyVal, _lblStatus, _lblStatusDot, _lblVer, _lblTitle;
-    readonly Button _btnSet;
-    readonly CheckBox _chkOn, _chkTray;
+    readonly Label _lblKeyHeader, _lblKeyVal, _lblStatus, _lblSettingsHeader;
+    readonly Guna2Button _btnSet;
+    readonly Guna2ToggleSwitch _togOn, _togTray;
+    readonly Label _lblTogOn, _lblTogTray;
+    readonly Guna2CirclePictureBox _statusDot;
     readonly NotifyIcon _tray;
     readonly System.Windows.Forms.Timer _capTimer;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  UI — Modern dark design
+    //  UI — Guna2 Modern Dark
     // ═══════════════════════════════════════════════════════════════════════
 
     public MainForm()
     {
         _cfg = LoadCfg();
 
-        // ── Window ──
+        // ── Borderless dark form ──
         Text = "FastLeave";
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(380, 340);
-        BackColor = T.Bg;
-        ForeColor = T.Text;
-        Font = new Font("Segoe UI", 10f);
+        ClientSize = new Size(400, 380);
+        BackColor = C_Bg;
+        ForeColor = C_Text;
+        Font = new Font("Segoe UI Variable Display", 10f);
+        FormBorderStyle = FormBorderStyle.None;
+        DoubleBuffered = true;
 
         LoadIcon();
+
+        // Rounded corners via DWM (Windows 11)
         try
         {
             int dark = 1; DwmSetWindowAttribute(Handle, 20, ref dark, 4);
-            int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, 4); // DWMWCP_ROUND
+            int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, 4);
         }
         catch { }
 
-        // ── Header with gradient accent bar ──
-        var header = new Panel { Bounds = new Rectangle(0, 0, 380, 56), BackColor = T.Bg };
-        header.Paint += (_, e) =>
+        // ── Title bar area (draggable) ──
+        var titleBar = new Guna2Panel
         {
-            using var brush = new LinearGradientBrush(
-                new Point(0, 0), new Point(380, 0),
-                Color.FromArgb(60, T.Accent), Color.FromArgb(0, T.Accent));
-            e.Graphics.FillRectangle(brush, 0, 0, 380, 56);
+            Bounds = new Rectangle(0, 0, 400, 52),
+            BackColor = C_Bg,
+            BorderRadius = 0,
         };
+        titleBar.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, 2, 0); } };
 
-        _lblTitle = new Label
+        var lblTitle = new Label
         {
             Text = "FastLeave",
-            Font = new Font("Segoe UI Semibold", 14f),
-            ForeColor = T.Text,
+            Font = new Font("Segoe UI Variable Display", 13f, FontStyle.Bold),
+            ForeColor = C_Text,
             BackColor = Color.Transparent,
             Location = new Point(20, 14), AutoSize = true,
         };
-        header.Controls.Add(_lblTitle);
 
-        _lblVer = new Label
+        var lblVer = new Label
         {
-            Text = "v0.3.2",
-            Font = new Font("Segoe UI", 8f),
-            ForeColor = T.Dim,
+            Text = "v0.4.0",
+            Font = new Font("Segoe UI Variable Display", 8f),
+            ForeColor = C_Dim,
             BackColor = Color.Transparent,
-            Location = new Point(320, 20), AutoSize = true,
+            Location = new Point(312, 18), AutoSize = true,
         };
-        header.Controls.Add(_lblVer);
-        Controls.Add(header);
+
+        var btnClose = new Guna2Button
+        {
+            Text = "\u2715",
+            Font = new Font("Segoe UI", 10f),
+            ForeColor = C_Sub,
+            FillColor = Color.Transparent,
+            HoverState = { FillColor = C_Red, ForeColor = Color.White },
+            BorderRadius = 6,
+            Size = new Size(32, 32),
+            Location = new Point(358, 10),
+        };
+        btnClose.Click += (_, _) => Close();
+
+        titleBar.Controls.AddRange([lblTitle, lblVer, btnClose]);
+        Controls.Add(titleBar);
 
         // ── Hotkey Card ──
-        var hotkeyCard = MakeCard(20, 66, 340, 72);
+        var hotkeyCard = MakeCard(20, 60, 360, 80);
 
-        _lblKey = new Label
+        _lblKeyHeader = new Label
         {
             Text = "HOTKEY",
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = T.Dim,
+            Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
+            ForeColor = C_Dim,
             BackColor = Color.Transparent,
-            Location = new Point(16, 10), AutoSize = true,
+            Location = new Point(16, 12), AutoSize = true,
         };
 
         _lblKeyVal = new Label
         {
             Text = VkName(_cfg.HotkeyVk),
-            Font = new Font("Segoe UI Semibold", 16f),
-            ForeColor = T.AccentHi,
+            Font = new Font("Segoe UI Variable Display", 18f, FontStyle.Bold),
+            ForeColor = C_Accent,
             BackColor = Color.Transparent,
-            Location = new Point(14, 30), AutoSize = true,
+            Location = new Point(14, 34), AutoSize = true,
         };
 
-        _btnSet = new Button
+        _btnSet = new Guna2Button
         {
             Text = "Set Key",
-            Font = new Font("Segoe UI Semibold", 9f),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = T.Accent,
-            ForeColor = T.Text,
+            Font = new Font("Segoe UI Variable Display", 9f, FontStyle.Bold),
+            ForeColor = Color.White,
+            FillColor = C_Accent,
+            HoverState = { FillColor = C_AccHi },
+            BorderRadius = 8,
+            Size = new Size(100, 36),
+            Location = new Point(244, 24),
             Cursor = Cursors.Hand,
-            Bounds = new Rectangle(230, 22, 94, 34),
         };
-        _btnSet.FlatAppearance.BorderSize = 0;
-        _btnSet.FlatAppearance.MouseOverBackColor = T.AccentHi;
         _btnSet.Click += (_, _) => StartCapture();
 
-        hotkeyCard.Controls.AddRange([_lblKey, _lblKeyVal, _btnSet]);
+        hotkeyCard.Controls.AddRange([_lblKeyHeader, _lblKeyVal, _btnSet]);
         Controls.Add(hotkeyCard);
 
         // ── Settings Card ──
-        var settingsCard = MakeCard(20, 150, 340, 88);
+        var settingsCard = MakeCard(20, 152, 360, 112);
 
-        var lblSettings = new Label
+        _lblSettingsHeader = new Label
         {
             Text = "SETTINGS",
-            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
-            ForeColor = T.Dim,
+            Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
+            ForeColor = C_Dim,
             BackColor = Color.Transparent,
-            Location = new Point(16, 10), AutoSize = true,
+            Location = new Point(16, 12), AutoSize = true,
         };
 
-        _chkOn = Chk("Enabled", 16, 34, true);
-        _chkOn.CheckedChanged += (_, _) => { _on = _chkOn.Checked; UpdateStatus(); };
+        // Enabled toggle
+        _lblTogOn = new Label
+        {
+            Text = "Enabled",
+            Font = new Font("Segoe UI Variable Display", 9.5f),
+            ForeColor = C_Text,
+            BackColor = Color.Transparent,
+            Location = new Point(16, 40), AutoSize = true,
+        };
 
-        _chkTray = Chk("Minimize to tray", 16, 58, _cfg.MinimizeToTray);
-        _chkTray.CheckedChanged += (_, _) => { _cfg.MinimizeToTray = _chkTray.Checked; SaveCfg(_cfg); };
+        _togOn = new Guna2ToggleSwitch
+        {
+            Checked = true,
+            Location = new Point(296, 38),
+            Size = new Size(48, 24),
+            CheckedState = { FillColor = C_Accent, InnerColor = Color.White },
+            UncheckedState = { FillColor = C_Border, InnerColor = C_Sub },
+        };
+        _togOn.CheckedChanged += (_, _) => { _on = _togOn.Checked; UpdateStatus(); };
 
-        settingsCard.Controls.AddRange([lblSettings, _chkOn, _chkTray]);
+        // Tray toggle
+        _lblTogTray = new Label
+        {
+            Text = "Minimize to tray",
+            Font = new Font("Segoe UI Variable Display", 9.5f),
+            ForeColor = C_Text,
+            BackColor = Color.Transparent,
+            Location = new Point(16, 72), AutoSize = true,
+        };
+
+        _togTray = new Guna2ToggleSwitch
+        {
+            Checked = _cfg.MinimizeToTray,
+            Location = new Point(296, 70),
+            Size = new Size(48, 24),
+            CheckedState = { FillColor = C_Accent, InnerColor = Color.White },
+            UncheckedState = { FillColor = C_Border, InnerColor = C_Sub },
+        };
+        _togTray.CheckedChanged += (_, _) => { _cfg.MinimizeToTray = _togTray.Checked; SaveCfg(_cfg); };
+
+        settingsCard.Controls.AddRange([_lblSettingsHeader, _lblTogOn, _togOn, _lblTogTray, _togTray]);
         Controls.Add(settingsCard);
 
         // ── Status Card ──
-        var statusCard = MakeCard(20, 250, 340, 56);
+        var statusCard = MakeCard(20, 276, 360, 60);
 
-        _lblStatusDot = new Label
+        _statusDot = new Guna2CirclePictureBox
         {
-            Text = "\u25CF",
-            Font = new Font("Segoe UI", 14f),
-            BackColor = Color.Transparent,
-            Location = new Point(14, 12), AutoSize = true,
+            Size = new Size(14, 14),
+            Location = new Point(18, 23),
+            ShadowDecoration = { Enabled = false },
         };
 
         _lblStatus = new Label
         {
-            Font = new Font("Segoe UI Semibold", 12f),
+            Font = new Font("Segoe UI Variable Display", 12f, FontStyle.Bold),
             BackColor = Color.Transparent,
-            Location = new Point(38, 16), AutoSize = true,
+            Location = new Point(40, 18), AutoSize = true,
         };
         UpdateStatus();
 
-        statusCard.Controls.AddRange([_lblStatusDot, _lblStatus]);
+        statusCard.Controls.AddRange([_statusDot, _lblStatus]);
         Controls.Add(statusCard);
 
         // ── Tray ──
@@ -401,41 +440,29 @@ public sealed class MainForm : Form
         if (!RegisterHotKey(Handle, HK_ID, 0, _cfg.HotkeyVk))
         {
             _lblStatus.Text = "HOTKEY CONFLICT";
-            _lblStatus.ForeColor = T.Red;
-            _lblStatusDot.ForeColor = T.Red;
+            _lblStatus.ForeColor = C_Red;
+            _statusDot.BackColor = C_Red;
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Drag support
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [DllImport("user32.dll")] static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint msg, int wp, int lp);
 
     // ═══════════════════════════════════════════════════════════════════════
     //  UI Helpers
     // ═══════════════════════════════════════════════════════════════════════
 
-    Panel MakeCard(int x, int y, int w, int h)
+    Guna2Panel MakeCard(int x, int y, int w, int h) => new()
     {
-        var card = new Panel
-        {
-            Bounds = new Rectangle(x, y, w, h),
-            BackColor = T.Card,
-        };
-        card.Paint += (_, e) =>
-        {
-            var r = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
-            using var path = RoundedRect(r, 10);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var fill = new SolidBrush(T.Card);
-            e.Graphics.FillPath(fill, path);
-            using var pen = new Pen(T.Border, 1);
-            e.Graphics.DrawPath(pen, path);
-        };
-        card.Region = CreateRoundRegion(w, h, 10);
-        return card;
-    }
-
-    CheckBox Chk(string text, int x, int y, bool on) => new()
-    {
-        Text = text, Location = new Point(x, y), Size = new Size(240, 22),
-        Checked = on, ForeColor = T.Sub, BackColor = Color.Transparent,
-        Font = new Font("Segoe UI", 9.5f),
+        Bounds = new Rectangle(x, y, w, h),
+        FillColor = C_Card,
+        BorderRadius = 8,
+        BorderColor = C_Border,
+        BorderThickness = 1,
     };
 
     void LoadIcon()
@@ -448,26 +475,8 @@ public sealed class MainForm : Form
     void UpdateStatus()
     {
         _lblStatus.Text = _on ? "READY" : "DISABLED";
-        _lblStatus.ForeColor = _on ? T.Green : T.Red;
-        _lblStatusDot.ForeColor = _on ? T.Green : T.Red;
-    }
-
-    static GraphicsPath RoundedRect(Rectangle r, int rad)
-    {
-        var p = new GraphicsPath();
-        int d = rad * 2;
-        p.AddArc(r.X, r.Y, d, d, 180, 90);
-        p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-        p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-        p.CloseFigure();
-        return p;
-    }
-
-    static Region CreateRoundRegion(int w, int h, int r)
-    {
-        using var p = RoundedRect(new Rectangle(0, 0, w, h), r);
-        return new Region(p);
+        _lblStatus.ForeColor = _on ? C_Green : C_Red;
+        _statusDot.BackColor = _on ? C_Green : C_Red;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -514,7 +523,7 @@ public sealed class MainForm : Form
     {
         _capturing = true;
         _btnSet.Text = "Press...";
-        _btnSet.BackColor = T.AccentHi;
+        _btnSet.FillColor = C_AccHi;
         UnregisterHotKey(Handle, HK_ID);
         _capTimer.Start();
     }
@@ -531,7 +540,7 @@ public sealed class MainForm : Form
                 RegisterHotKey(Handle, HK_ID, 0, _cfg.HotkeyVk);
                 _lblKeyVal.Text = VkName(_cfg.HotkeyVk);
                 _btnSet.Text = "Set Key";
-                _btnSet.BackColor = T.Accent;
+                _btnSet.FillColor = C_Accent;
                 _capturing = false;
                 _capTimer.Stop();
                 return;

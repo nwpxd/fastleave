@@ -14,7 +14,9 @@
       "Bash(dotnet:*)",
       "Bash(mv:*)",
       "Bash(taskkill:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(ls:*)",
+      "Bash(dotnet-ildasm:*)"
     ]
   }
 }
