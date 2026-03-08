@@ -51,6 +51,16 @@ public sealed class MainForm : Form
         SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
+    static void MoveTo(int x, int y)
+    {
+        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
+        int ax = (int)((long)x * 65535 / sw);
+        int ay = (int)((long)y * 65535 / sh);
+        var move = new INPUT[1];
+        move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
+        SendInput(1, move, Marshal.SizeOf<INPUT>());
+    }
+
     static void ClickAt(int x, int y)
     {
         int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
@@ -58,19 +68,13 @@ public sealed class MainForm : Form
         int ay = (int)((long)y * 65535 / sh);
         int sz = Marshal.SizeOf<INPUT>();
 
-        // Move to position
-        var move = new INPUT[1];
-        move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
-        SendInput(1, move, sz);
-        Thread.Sleep(20);
-
-        // Mouse down — separate call so game registers the press
+        // Mouse down
         var down = new INPUT[1];
         down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
         SendInput(1, down, sz);
         Thread.Sleep(30);
 
-        // Mouse up — separate call so game registers the release
+        // Mouse up
         var up = new INPUT[1];
         up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
         SendInput(1, up, sz);
@@ -96,28 +100,36 @@ public sealed class MainForm : Form
         return true;
     }
 
-    /// Single-attempt macro. No retry, no focus stealing.
-    /// Fortnite is already focused because user just pressed the hotkey in-game.
+    /// Single-attempt macro. Fortnite is already focused.
+    /// Moves cursor to target DURING the wait so it's ready when the UI appears.
     void RunLeave(Config cfg)
     {
         try
         {
-            // Small delay to let the hotkey release settle
             Thread.Sleep(30);
 
             // Step 1: Escape — open side panel
             PressKey(0x1B);
-            if (!Wait(cfg.EscapeDelayMs)) return;
+            // Move cursor to exit icon while waiting for menu to appear
+            Thread.Sleep(100);
+            MoveTo(cfg.ExitBtn[0], cfg.ExitBtn[1]);
+            if (!Wait(cfg.EscapeDelayMs - 100)) return;
 
-            // Step 2: Click exit door icon (top-right)
+            // Step 2: Click exit door icon — cursor is already there
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            if (!Wait(cfg.ClickDelayMs)) return;
+            // Move to "Return to lobby" while waiting for page transition
+            Thread.Sleep(80);
+            MoveTo(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
+            if (!Wait(cfg.ClickDelayMs - 80)) return;
 
-            // Step 3: Click "Return to lobby"
+            // Step 3: Click "Return to lobby" — cursor is already there
             ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            if (!Wait(cfg.ClickDelayMs)) return;
+            // Move to "Yes" while waiting for confirmation dialog
+            Thread.Sleep(80);
+            MoveTo(cfg.YesBtn[0], cfg.YesBtn[1]);
+            if (!Wait(cfg.ClickDelayMs - 80)) return;
 
-            // Step 4: Click "Yes"
+            // Step 4: Click "Yes" — cursor is already there
             ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
         }
         finally
@@ -130,7 +142,7 @@ public sealed class MainForm : Form
     //  Config
     // ═══════════════════════════════════════════════════════════════════════
 
-    const int CFG_VERSION = 4;
+    const int CFG_VERSION = 5;
 
     sealed class Config
     {
@@ -139,7 +151,7 @@ public sealed class MainForm : Form
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
-        public int EscapeDelayMs { get; set; } = 600;
+        public int EscapeDelayMs { get; set; } = 800;
         public int ClickDelayMs { get; set; } = 250;
         public bool MinimizeToTray { get; set; } = true;
     }
@@ -277,7 +289,7 @@ public sealed class MainForm : Form
 
         _lblVer = new Label
         {
-            Text = "v0.3.1",
+            Text = "v0.3.2",
             Font = new Font("Segoe UI", 8f),
             ForeColor = T.Dim,
             BackColor = Color.Transparent,
