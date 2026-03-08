@@ -244,7 +244,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v1.4.0",
+            Text = "v1.4.1",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Muted,
             BackColor = Color.Transparent,
@@ -395,7 +395,6 @@ public sealed class MainForm : Form
     void PollEscape(object? s, EventArgs e)
     {
         if (_on && (GetAsyncKeyState(0x1B) & 1) != 0 &&
-            IsFortniteActive() &&
             Interlocked.CompareExchange(ref _running, 1, 0) == 0)
         {
             Task.Run(() => RunLeave(_cfg));
