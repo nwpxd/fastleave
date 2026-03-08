@@ -1,0 +1,24 @@
+[package]
+name = "fastleave"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+winapi = { version = "0.3", features = [
+    "winuser", "windef", "wingdi", "libloaderapi",
+    "processthreadsapi", "synchapi", "impl-default",
+    "commctrl", "winbase"
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+winres = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"
