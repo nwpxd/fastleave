@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Read(//d/claude/leavefast/$USERPROFILE/.cargo/**)",
+      "Read(//c/Users/yeee7/.cargo/**)",
+      "Bash(echo \"PATH=$PATH\")",
+      "Bash(curl:*)",
+      "Bash(export:*)",
+      "Bash(winget install:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(rm:*)",
+      "Bash(dotnet:*)",
+      "Bash(mv:*)",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)"
+    ]
+  }
+}

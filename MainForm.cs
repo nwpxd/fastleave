@@ -51,78 +51,77 @@ public sealed class MainForm : Form
         SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
-    /// <summary>
-    /// Move the mouse to (x,y) using the INPUT system (not SetCursorPos)
-    /// so the game actually sees the movement. Uses fast interpolation
-    /// (10 steps, ~50ms total) to simulate real mouse travel.
-    /// Then clicks at the final position.
-    /// </summary>
+    /// Fast move to (x,y) in 3 hops via input system, then click
+    /// with move+down+up in a single SendInput call.
     static void ClickAt(int x, int y)
     {
+        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
         GetCursorPos(out POINT from);
-        int sw = GetSystemMetrics(0);
-        int sh = GetSystemMetrics(1);
 
-        // Fast interpolated move — 10 steps over ~50ms
-        const int steps = 10;
-        for (int i = 1; i <= steps; i++)
+        // 3 fast hops (~15ms total)
+        for (int i = 1; i <= 3; i++)
         {
-            float t = (float)i / steps;
-            int mx = from.X + (int)((x - from.X) * t);
-            int my = from.Y + (int)((y - from.Y) * t);
-            int ax = (int)((long)mx * 65535 / sw);
-            int ay = (int)((long)my * 65535 / sh);
-
+            float t = (float)i / 3;
+            int mx = (int)((long)(from.X + (int)((x - from.X) * t)) * 65535 / sw);
+            int my = (int)((long)(from.Y + (int)((y - from.Y) * t)) * 65535 / sh);
             var m = new INPUT[1];
-            m[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() {
-                dx = ax, dy = ay, dwFlags = MMOVE | MABS
-            }}};
+            m[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = mx, dy = my, dwFlags = MMOVE | MABS } } };
             SendInput(1, m, Marshal.SizeOf<INPUT>());
-            if (i < steps) Thread.Sleep(5);
+            Thread.Sleep(5);
         }
 
-        Thread.Sleep(40); // let the game register final position
-
-        // Click
-        var c = new INPUT[2];
-        c[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dwFlags = MDOWN } } };
-        c[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dwFlags = MUP } } };
-        SendInput(2, c, Marshal.SizeOf<INPUT>());
+        // Final position: move + click in one call so game sees them together
+        int ax = (int)((long)x * 65535 / sw);
+        int ay = (int)((long)y * 65535 / sh);
+        var c = new INPUT[3];
+        c[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
+        c[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+        c[2] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
+        SendInput(3, c, Marshal.SizeOf<INPUT>());
     }
 
-    /// <summary>
-    /// THE MACRO — leaves a Fortnite match in 4 steps.
-    ///
-    /// 1. Press Escape → sidebar menu opens
-    /// 2. Click exit icon (door, top-right)
-    /// 3. Click "Return to lobby"
-    /// 4. Click "Yes"
-    ///
-    /// Key rules:
-    /// - Do NOT move mouse before Escape (game interprets it as camera rotation)
-    /// - Use generous delays (Fortnite UI has animations)
-    /// - Move mouse through input system, not SetCursorPos (game ignores teleports)
-    /// </summary>
+    /// Returns true if user is touching mouse or keyboard — macro should abort.
+    static bool UserInterrupted()
+    {
+        // Mouse buttons, WASD, arrows, Escape, Space
+        int[] keys = [0x01, 0x02, 0x57, 0x41, 0x53, 0x44, 0x25, 0x26, 0x27, 0x28, 0x1B, 0x20];
+        foreach (int k in keys)
+            if ((GetAsyncKeyState(k) & 0x8000) != 0) return true;
+        return false;
+    }
+
+    /// Sleep in 15ms chunks, abort early if user does anything.
+    static bool Wait(int ms)
+    {
+        int elapsed = 0;
+        while (elapsed < ms)
+        {
+            Thread.Sleep(15);
+            elapsed += 15;
+            if (UserInterrupted()) return false;
+        }
+        return true;
+    }
+
+    /// THE MACRO — fast, aborts instantly if user touches input.
     void RunLeave(Config cfg)
     {
         try
         {
-            GetCursorPos(out POINT saved);
+            // Step 1: Escape
+            PressKey(0x1B);
+            if (!Wait(cfg.EscapeDelayMs)) return;
 
-            PressKey(0x1B); // Escape
-            Thread.Sleep(cfg.EscapeDelayMs);
-
+            // Step 2: Exit icon
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            Thread.Sleep(cfg.ClickDelayMs);
+            if (!Wait(cfg.ClickDelayMs)) return;
 
+            // Step 3: Return to lobby
             ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            Thread.Sleep(cfg.ClickDelayMs);
+            if (!Wait(cfg.ClickDelayMs)) return;
 
+            // Step 4: Yes
             ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
-            Thread.Sleep(80);
-
-            // Restore cursor position
-            SetCursorPos(saved.X, saved.Y);
         }
         finally
         {
