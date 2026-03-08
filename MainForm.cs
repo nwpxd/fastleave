@@ -17,6 +17,7 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr extra);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll")] static extern bool BlockInput(bool fBlockIt);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
     [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint Type; public INPUTUNION U; }
@@ -53,54 +54,43 @@ public sealed class MainForm : Form
 
     static void ClickAt(int x, int y)
     {
-        SetCursorPos(x, y);
-        Thread.Sleep(15);
-        mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); // LEFTDOWN
-        Thread.Sleep(40);
-        mouse_event(0x0004, 0, 0, 0, IntPtr.Zero); // LEFTUP
-    }
-
-    static bool UserInterrupted()
-    {
-        int[] keys = [0x01, 0x02, 0x57, 0x41, 0x53, 0x44, 0x25, 0x26, 0x27, 0x28, 0x1B, 0x20];
-        foreach (int k in keys)
-            if ((GetAsyncKeyState(k) & 0x8000) != 0) return true;
-        return false;
-    }
-
-    static bool Wait(int ms)
-    {
-        int elapsed = 0;
-        while (elapsed < ms)
+        // Double-click for reliability — click twice at each position
+        for (int i = 0; i < 2; i++)
         {
+            SetCursorPos(x, y);
             Thread.Sleep(10);
-            elapsed += 10;
-            if (UserInterrupted()) return false;
+            mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); // LEFTDOWN
+            Thread.Sleep(30);
+            mouse_event(0x0004, 0, 0, 0, IntPtr.Zero); // LEFTUP
+            if (i == 0) Thread.Sleep(30);
         }
-        return true;
     }
 
     void RunLeave(Config cfg)
     {
         try
         {
+            // Block all physical input so user's mouse/keyboard can't interfere.
+            // SendInput still goes through. Unblocked in finally.
+            BlockInput(true);
+
             // Run twice: first pass closes any sub-state (build mode, inventory, map),
             // second pass opens the actual leave menu and clicks through it.
             for (int pass = 0; pass < 2; pass++)
             {
-                Thread.Sleep(50);
+                Thread.Sleep(30);
 
                 // Step 1: Escape — open side panel (or close sub-state on 1st pass)
                 PressKey(0x1B);
-                if (!Wait(cfg.EscapeDelayMs)) return;
+                Thread.Sleep(cfg.EscapeDelayMs);
 
                 // Step 2: Click exit door icon
                 ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-                if (!Wait(cfg.ClickDelayMs)) return;
+                Thread.Sleep(cfg.ClickDelayMs);
 
                 // Step 3: Click "Return to lobby"
                 ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-                if (!Wait(cfg.ClickDelayMs)) return;
+                Thread.Sleep(cfg.ClickDelayMs);
 
                 // Step 4: Click "Yes"
                 ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
@@ -108,6 +98,7 @@ public sealed class MainForm : Form
         }
         finally
         {
+            BlockInput(false);
             Interlocked.Exchange(ref _running, 0);
         }
     }
@@ -260,7 +251,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v0.4.2",
+            Text = "v0.5.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
