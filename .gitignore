@@ -1,2 +1,5 @@
-/target
-fn-leave-config.json
+bin/
+obj/
+publish/
+*.user
+fastleave.json
