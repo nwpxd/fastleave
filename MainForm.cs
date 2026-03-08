@@ -13,12 +13,12 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mod, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] i, int sz);
-    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
-    [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr extra);
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
-    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint Type; public INPUTUNION U; }
     [StructLayout(LayoutKind.Explicit)]   struct INPUTUNION
     {
@@ -34,9 +34,8 @@ public sealed class MainForm : Form
         public ushort wVk, wScan; public uint dwFlags, time; public IntPtr extra;
     }
 
-    const uint INPUT_KB = 1, INPUT_MOUSE = 0;
-    const uint KEYUP = 0x0002, MDOWN = 0x0002, MUP = 0x0004;
-    const uint MMOVE = 0x0001, MABS = 0x8000;
+    const uint INPUT_KB = 1;
+    const uint KEYUP = 0x0002;
     const int WM_HOTKEY = 0x0312, HK_ID = 1;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -45,39 +44,20 @@ public sealed class MainForm : Form
 
     static void PressKey(ushort vk)
     {
+        ushort scan = (ushort)MapVirtualKey(vk, 0);
         var a = new INPUT[2];
-        a[0] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk } } };
-        a[1] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, dwFlags = KEYUP } } };
+        a[0] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, wScan = scan } } };
+        a[1] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, wScan = scan, dwFlags = KEYUP } } };
         SendInput(2, a, Marshal.SizeOf<INPUT>());
-    }
-
-    static void MoveTo(int x, int y)
-    {
-        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
-        int ax = (int)((long)x * 65535 / sw);
-        int ay = (int)((long)y * 65535 / sh);
-        var move = new INPUT[1];
-        move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
-        SendInput(1, move, Marshal.SizeOf<INPUT>());
     }
 
     static void ClickAt(int x, int y)
     {
-        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
-        int ax = (int)((long)x * 65535 / sw);
-        int ay = (int)((long)y * 65535 / sh);
-        int sz = Marshal.SizeOf<INPUT>();
-
-        // Mouse down
-        var down = new INPUT[1];
-        down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
-        SendInput(1, down, sz);
-        Thread.Sleep(30);
-
-        // Mouse up
-        var up = new INPUT[1];
-        up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
-        SendInput(1, up, sz);
+        SetCursorPos(x, y);
+        Thread.Sleep(15);
+        mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); // LEFTDOWN
+        Thread.Sleep(40);
+        mouse_event(0x0004, 0, 0, 0, IntPtr.Zero); // LEFTUP
     }
 
     static bool UserInterrupted()
@@ -104,25 +84,19 @@ public sealed class MainForm : Form
     {
         try
         {
-            Thread.Sleep(30);
+            Thread.Sleep(50);
 
             // Step 1: Escape — open side panel
             PressKey(0x1B);
-            Thread.Sleep(100);
-            MoveTo(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            if (!Wait(cfg.EscapeDelayMs - 100)) return;
+            if (!Wait(cfg.EscapeDelayMs)) return;
 
             // Step 2: Click exit door icon
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            Thread.Sleep(80);
-            MoveTo(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            if (!Wait(cfg.ClickDelayMs - 80)) return;
+            if (!Wait(cfg.ClickDelayMs)) return;
 
             // Step 3: Click "Return to lobby"
             ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            Thread.Sleep(80);
-            MoveTo(cfg.YesBtn[0], cfg.YesBtn[1]);
-            if (!Wait(cfg.ClickDelayMs - 80)) return;
+            if (!Wait(cfg.ClickDelayMs)) return;
 
             // Step 4: Click "Yes"
             ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
@@ -137,7 +111,7 @@ public sealed class MainForm : Form
     //  Config
     // ═══════════════════════════════════════════════════════════════════════
 
-    const int CFG_VERSION = 5;
+    const int CFG_VERSION = 6;
 
     sealed class Config
     {
@@ -147,7 +121,7 @@ public sealed class MainForm : Form
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
         public int EscapeDelayMs { get; set; } = 800;
-        public int ClickDelayMs { get; set; } = 250;
+        public int ClickDelayMs { get; set; } = 300;
         public bool MinimizeToTray { get; set; } = true;
     }
 
@@ -281,7 +255,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v0.4.0",
+            Text = "v0.4.1",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
