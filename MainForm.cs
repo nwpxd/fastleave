@@ -54,33 +54,24 @@ public sealed class MainForm : Form
         SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
-    /// Fast move to (x,y) in 3 hops via input system, then click
-    /// with move+down+up in a single SendInput call.
+    /// Move cursor to (x,y) and click. Uses absolute coords for 1920x1080.
     static void ClickAt(int x, int y)
     {
-        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
-        GetCursorPos(out POINT from);
+        // Move via absolute SendInput — normalized 0-65535 for 1920x1080
+        int ax = (int)((long)x * 65536 / 1920);
+        int ay = (int)((long)y * 65536 / 1080);
 
-        // 3 fast hops (~15ms total)
-        for (int i = 1; i <= 3; i++)
-        {
-            float t = (float)i / 3;
-            int mx = (int)((long)(from.X + (int)((x - from.X) * t)) * 65535 / sw);
-            int my = (int)((long)(from.Y + (int)((y - from.Y) * t)) * 65535 / sh);
-            var m = new INPUT[1];
-            m[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = mx, dy = my, dwFlags = MMOVE | MABS } } };
-            SendInput(1, m, Marshal.SizeOf<INPUT>());
-            Thread.Sleep(5);
-        }
+        // Move to target
+        var move = new INPUT[1];
+        move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
+        SendInput(1, move, Marshal.SizeOf<INPUT>());
+        Thread.Sleep(30);
 
-        // Final position: move + click in one call so game sees them together
-        int ax = (int)((long)x * 65535 / sw);
-        int ay = (int)((long)y * 65535 / sh);
-        var c = new INPUT[3];
-        c[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
-        c[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
-        c[2] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
-        SendInput(3, c, Marshal.SizeOf<INPUT>());
+        // Click (down + up)
+        var click = new INPUT[2];
+        click[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dwFlags = MDOWN } } };
+        click[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dwFlags = MUP } } };
+        SendInput(2, click, Marshal.SizeOf<INPUT>());
     }
 
     /// Returns true if user is touching mouse or keyboard — macro should abort.
@@ -127,9 +118,7 @@ public sealed class MainForm : Form
             // Focus Fortnite first so inputs go to the game
             FocusFortnite();
 
-            // Step 1: Press Escape twice — first clears any sub-state, second opens menu
-            PressKey(0x1B);
-            Thread.Sleep(100);
+            // Step 1: Escape — open menu
             PressKey(0x1B);
             if (!Wait(cfg.EscapeDelayMs)) return;
 
