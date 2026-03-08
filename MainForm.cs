@@ -54,23 +54,23 @@ public sealed class MainForm : Form
         SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
-    /// Move cursor to (x,y) and click. Uses absolute coords for 1920x1080.
+    /// Move cursor to (x,y) and click.
     static void ClickAt(int x, int y)
     {
-        // Move via absolute SendInput — normalized 0-65535 for 1920x1080
-        int ax = (int)((long)x * 65536 / 1920);
-        int ay = (int)((long)y * 65536 / 1080);
+        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
+        int ax = (int)((long)x * 65535 / sw);
+        int ay = (int)((long)y * 65535 / sh);
 
-        // Move to target
+        // Move to target position
         var move = new INPUT[1];
         move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
         SendInput(1, move, Marshal.SizeOf<INPUT>());
-        Thread.Sleep(30);
+        Thread.Sleep(20);
 
-        // Click (down + up)
+        // Click at current position
         var click = new INPUT[2];
-        click[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dwFlags = MDOWN } } };
-        click[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dwFlags = MUP } } };
+        click[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+        click[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
         SendInput(2, click, Marshal.SizeOf<INPUT>());
     }
 
@@ -97,16 +97,36 @@ public sealed class MainForm : Form
         return true;
     }
 
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
+    [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder sb, int max);
+    [DllImport("user32.dll")] static extern int GetClassName(IntPtr h, System.Text.StringBuilder sb, int max);
+    delegate bool EnumWindowsProc(IntPtr h, IntPtr lp);
+
     /// Focus Fortnite before sending inputs.
     static void FocusFortnite()
     {
-        // Try common Fortnite window names
-        IntPtr hw = FindWindow("UnrealWindow", "Fortnite  ");
-        if (hw == IntPtr.Zero) hw = FindWindow("UnrealWindow", null);
-        if (hw != IntPtr.Zero && GetForegroundWindow() != hw)
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((h, _) =>
         {
-            SetForegroundWindow(hw);
-            Thread.Sleep(50);
+            var cls = new System.Text.StringBuilder(256);
+            GetClassName(h, cls, 256);
+            if (cls.ToString() == "UnrealWindow")
+            {
+                var title = new System.Text.StringBuilder(256);
+                GetWindowText(h, title, 256);
+                if (title.ToString().Contains("Fortnite", StringComparison.OrdinalIgnoreCase))
+                {
+                    found = h;
+                    return false;
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        if (found != IntPtr.Zero && GetForegroundWindow() != found)
+        {
+            SetForegroundWindow(found);
+            Thread.Sleep(80);
         }
     }
 
@@ -149,7 +169,7 @@ public sealed class MainForm : Form
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
-        public int EscapeDelayMs { get; set; } = 600;
+        public int EscapeDelayMs { get; set; } = 700;
         public int ClickDelayMs { get; set; } = 300;
         public bool MinimizeToTray { get; set; } = true;
     }
