@@ -18,6 +18,7 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr hWnd, char[] buf, int max);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll")] static extern bool BlockInput(bool fBlockIt);
     delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
@@ -83,27 +84,27 @@ public sealed class MainForm : Form
         int ay = (int)((long)y * 65535 / sh);
         int sz = Marshal.SizeOf<INPUT>();
 
-        var move = new INPUT[1];
-        move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
-        SendInput(1, move, sz);
-        Thread.Sleep(15);
-
-        var down = new INPUT[1];
-        down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
-        SendInput(1, down, sz);
-        Thread.Sleep(30);
-
-        var up = new INPUT[1];
-        up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
-        SendInput(1, up, sz);
+        // Move + double-click for reliability (all via SendInput — bypasses BlockInput)
+        for (int i = 0; i < 2; i++)
+        {
+            var a = new INPUT[3];
+            a[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
+            a[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+            a[2] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
+            SendInput(3, a, sz);
+            if (i == 0) Thread.Sleep(30);
+        }
     }
 
     void RunLeave(Config cfg)
     {
         try
         {
+            // Block physical input so user can't interfere.
+            // SendInput bypasses BlockInput — our clicks go through.
+            BlockInput(true);
+
             // User pressed Escape — wait for menu, then click through.
-            // Single clean pass. All delays are user-tunable.
             Thread.Sleep(cfg.StartDelayMs);
 
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
@@ -116,6 +117,7 @@ public sealed class MainForm : Form
         }
         finally
         {
+            BlockInput(false);
             Interlocked.Exchange(ref _running, 0);
         }
     }
@@ -244,7 +246,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v1.4.2",
+            Text = "v1.5.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Muted,
             BackColor = Color.Transparent,
@@ -307,13 +309,21 @@ public sealed class MainForm : Form
         Controls.Add(MakeLabel("Start delay", L, 216));
         Controls.Add(MakeSuffix("ms", R, 218));
         _txtStart = MakeNumBox(_cfg.StartDelayMs, R - 68, 210);
-        _txtStart.TextChanged += (_, _) => { if (int.TryParse(_txtStart.Text, out int v) && v >= 0) { _cfg.StartDelayMs = v; SaveCfg(_cfg); } };
+        _txtStart.TextChanged += (_, _) =>
+        {
+            if (int.TryParse(_txtStart.Text, out int v) && v >= 0)
+            { _cfg.StartDelayMs = v; SaveCfg(_cfg); FlashSaved(_txtStart); }
+        };
         Controls.Add(_txtStart);
 
         Controls.Add(MakeLabel("Click delay", L, 254));
         Controls.Add(MakeSuffix("ms", R, 256));
         _txtClick = MakeNumBox(_cfg.ClickDelayMs, R - 68, 248);
-        _txtClick.TextChanged += (_, _) => { if (int.TryParse(_txtClick.Text, out int v) && v >= 0) { _cfg.ClickDelayMs = v; SaveCfg(_cfg); } };
+        _txtClick.TextChanged += (_, _) =>
+        {
+            if (int.TryParse(_txtClick.Text, out int v) && v >= 0)
+            { _cfg.ClickDelayMs = v; SaveCfg(_cfg); FlashSaved(_txtClick); }
+        };
         Controls.Add(_txtClick);
 
         // ── Divider ──
@@ -457,6 +467,13 @@ public sealed class MainForm : Form
         FillColor = C_Border,
         BorderRadius = 0,
     };
+
+    static async void FlashSaved(Guna2TextBox box)
+    {
+        box.BorderColor = C_Green;
+        await Task.Delay(600);
+        box.BorderColor = C_Light;
+    }
 
     void LoadIcon()
     {
