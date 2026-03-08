@@ -130,7 +130,25 @@ public sealed class MainForm : Form
         }
     }
 
-    /// THE MACRO — fast, aborts instantly if user touches input.
+    /// Run one full leave attempt. Returns true if not interrupted.
+    static bool DoLeaveAttempt(Config cfg, int escDelay)
+    {
+        PressKey(0x1B);
+        if (!Wait(escDelay)) return false;
+
+        ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
+        if (!Wait(cfg.ClickDelayMs)) return false;
+
+        ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
+        if (!Wait(cfg.ClickDelayMs)) return false;
+
+        ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
+        return true;
+    }
+
+    /// THE MACRO — runs the sequence twice to handle cases where
+    /// first Escape closes a sub-state (build mode, inventory, map)
+    /// instead of opening the leave menu.
     void RunLeave(Config cfg)
     {
         try
@@ -138,20 +156,15 @@ public sealed class MainForm : Form
             // Focus Fortnite first so inputs go to the game
             FocusFortnite();
 
-            // Step 1: Escape — open menu
-            PressKey(0x1B);
-            if (!Wait(cfg.EscapeDelayMs)) return;
+            // Attempt 1: Full sequence
+            if (!DoLeaveAttempt(cfg, cfg.EscapeDelayMs)) return;
 
-            // Step 2: Exit icon
-            ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-            if (!Wait(cfg.ClickDelayMs)) return;
-
-            // Step 3: Return to lobby
-            ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-            if (!Wait(cfg.ClickDelayMs)) return;
-
-            // Step 4: Yes
-            ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
+            // Brief pause then attempt 2: catches the case where
+            // attempt 1's Escape only closed a sub-menu.
+            // If attempt 1 already worked, we're in loading screen
+            // and these inputs do nothing harmful.
+            if (!Wait(200)) return;
+            DoLeaveAttempt(cfg, cfg.EscapeDelayMs);
         }
         finally
         {
