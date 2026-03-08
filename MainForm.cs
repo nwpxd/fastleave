@@ -212,25 +212,24 @@ public sealed class MainForm : Form
     bool _on = true;
     int _running;
 
-    readonly Label _lblStatus, _lblSettingsHeader;
+    readonly Label _lblStatus;
     readonly Guna2ToggleSwitch _togOn, _togTray;
-    readonly Label _lblTogOn, _lblTogTray;
     readonly Guna2CirclePictureBox _statusDot;
     readonly NotifyIcon _tray;
     readonly System.Windows.Forms.Timer _escTimer;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  UI — Guna2 Modern Dark
+    //  UI — Ultra-minimalist light
     // ═══════════════════════════════════════════════════════════════════════
 
     public MainForm()
     {
         _cfg = LoadCfg();
 
-        // ── Borderless dark form ──
+        // ── Borderless white form ──
         Text = "FastLeave";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(400, 310);
+        ClientSize = new Size(360, 340);
         BackColor = C_Bg;
         ForeColor = C_Text;
         Font = new Font("Segoe UI Variable Display", 10f);
@@ -239,18 +238,18 @@ public sealed class MainForm : Form
 
         LoadIcon();
 
-        // Rounded corners via DWM (Windows 11)
+        // Rounded corners + light mode via DWM
         try
         {
-            int dark = 1; DwmSetWindowAttribute(Handle, 20, ref dark, 4);
+            int dark = 0; DwmSetWindowAttribute(Handle, 20, ref dark, 4);
             int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, 4);
         }
         catch { }
 
-        // ── Title bar area (draggable) ──
+        // ── Title bar (draggable) ──
         var titleBar = new Guna2Panel
         {
-            Bounds = new Rectangle(0, 0, 400, 52),
+            Bounds = new Rectangle(0, 0, 360, 56),
             BackColor = C_Bg,
             BorderRadius = 0,
         };
@@ -259,31 +258,31 @@ public sealed class MainForm : Form
         var lblTitle = new Label
         {
             Text = "FastLeave",
-            Font = new Font("Segoe UI Variable Display", 13f, FontStyle.Bold),
+            Font = new Font("Segoe UI Variable Display", 14f, FontStyle.Bold),
             ForeColor = C_Text,
             BackColor = Color.Transparent,
-            Location = new Point(20, 14), AutoSize = true,
+            Location = new Point(24, 16), AutoSize = true,
         };
 
         var lblVer = new Label
         {
-            Text = "v1.1.0",
+            Text = "v1.2.0",
             Font = new Font("Segoe UI Variable Display", 8f),
-            ForeColor = C_Dim,
+            ForeColor = C_Muted,
             BackColor = Color.Transparent,
-            Location = new Point(312, 18), AutoSize = true,
+            Location = new Point(120, 22), AutoSize = true,
         };
 
         var btnMin = new Guna2Button
         {
             Text = "\u2013",
-            Font = new Font("Segoe UI", 10f),
-            ForeColor = C_Sub,
+            Font = new Font("Segoe UI", 11f),
+            ForeColor = C_Muted,
             FillColor = Color.Transparent,
-            HoverState = { FillColor = C_Border, ForeColor = Color.White },
+            HoverState = { FillColor = C_Light, ForeColor = C_Text },
             BorderRadius = 6,
             Size = new Size(32, 32),
-            Location = new Point(322, 10),
+            Location = new Point(284, 12),
         };
         btnMin.Click += (_, _) => WindowState = FormWindowState.Minimized;
 
@@ -291,124 +290,120 @@ public sealed class MainForm : Form
         {
             Text = "\u2715",
             Font = new Font("Segoe UI", 10f),
-            ForeColor = C_Sub,
+            ForeColor = C_Muted,
             FillColor = Color.Transparent,
             HoverState = { FillColor = C_Red, ForeColor = Color.White },
             BorderRadius = 6,
             Size = new Size(32, 32),
-            Location = new Point(358, 10),
+            Location = new Point(318, 12),
         };
         btnClose.Click += (_, _) => Close();
 
         titleBar.Controls.AddRange([lblTitle, lblVer, btnMin, btnClose]);
         Controls.Add(titleBar);
 
-        // ── Trigger Card ──
-        var triggerCard = MakeCard(20, 60, 360, 70);
-
+        // ── Trigger section ──
         var lblTrigHeader = new Label
         {
             Text = "TRIGGER",
             Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
-            ForeColor = C_Dim,
-            BackColor = Color.Transparent,
-            Location = new Point(16, 12), AutoSize = true,
+            ForeColor = C_Muted,
+            BackColor = C_Bg,
+            Location = new Point(28, 72), AutoSize = true,
         };
+        Controls.Add(lblTrigHeader);
 
         var lblTrigVal = new Label
         {
             Text = "ESC",
-            Font = new Font("Segoe UI Variable Display", 18f, FontStyle.Bold),
-            ForeColor = C_Accent,
-            BackColor = Color.Transparent,
-            Location = new Point(14, 30), AutoSize = true,
+            Font = new Font("Segoe UI Variable Display", 28f, FontStyle.Bold),
+            ForeColor = C_Text,
+            BackColor = C_Bg,
+            Location = new Point(24, 92), AutoSize = true,
         };
+        Controls.Add(lblTrigVal);
 
         var lblTrigDesc = new Label
         {
             Text = "Press Escape in-game to leave match",
             Font = new Font("Segoe UI Variable Display", 8.5f),
-            ForeColor = C_Sub,
-            BackColor = Color.Transparent,
-            Location = new Point(80, 38), AutoSize = true,
+            ForeColor = C_Muted,
+            BackColor = C_Bg,
+            Location = new Point(28, 136), AutoSize = true,
         };
+        Controls.Add(lblTrigDesc);
 
-        triggerCard.Controls.AddRange([lblTrigHeader, lblTrigVal, lblTrigDesc]);
-        Controls.Add(triggerCard);
-
-        // ── Settings Card ──
-        var settingsCard = MakeCard(20, 142, 360, 112);
-
-        _lblSettingsHeader = new Label
+        // ── Settings section ──
+        var lblSettingsHeader = new Label
         {
             Text = "SETTINGS",
             Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
-            ForeColor = C_Dim,
-            BackColor = Color.Transparent,
-            Location = new Point(16, 12), AutoSize = true,
+            ForeColor = C_Muted,
+            BackColor = C_Bg,
+            Location = new Point(28, 176), AutoSize = true,
         };
+        Controls.Add(lblSettingsHeader);
 
-        _lblTogOn = new Label
+        var lblTogOn = new Label
         {
             Text = "Enabled",
             Font = new Font("Segoe UI Variable Display", 9.5f),
             ForeColor = C_Text,
-            BackColor = Color.Transparent,
-            Location = new Point(16, 40), AutoSize = true,
+            BackColor = C_Bg,
+            Location = new Point(28, 204), AutoSize = true,
         };
+        Controls.Add(lblTogOn);
 
         _togOn = new Guna2ToggleSwitch
         {
             Checked = true,
-            Location = new Point(296, 38),
-            Size = new Size(48, 24),
-            CheckedState = { FillColor = C_Accent, InnerColor = Color.White },
-            UncheckedState = { FillColor = C_Border, InnerColor = C_Sub },
+            Location = new Point(288, 202),
+            Size = new Size(44, 22),
+            CheckedState = { FillColor = C_Text, InnerColor = Color.White },
+            UncheckedState = { FillColor = C_Light, InnerColor = Color.White },
         };
         _togOn.CheckedChanged += (_, _) => { _on = _togOn.Checked; UpdateStatus(); };
+        Controls.Add(_togOn);
 
-        _lblTogTray = new Label
+        var lblTogTray = new Label
         {
             Text = "Minimize to tray",
             Font = new Font("Segoe UI Variable Display", 9.5f),
             ForeColor = C_Text,
-            BackColor = Color.Transparent,
-            Location = new Point(16, 72), AutoSize = true,
+            BackColor = C_Bg,
+            Location = new Point(28, 238), AutoSize = true,
         };
+        Controls.Add(lblTogTray);
 
         _togTray = new Guna2ToggleSwitch
         {
             Checked = _cfg.MinimizeToTray,
-            Location = new Point(296, 70),
-            Size = new Size(48, 24),
-            CheckedState = { FillColor = C_Accent, InnerColor = Color.White },
-            UncheckedState = { FillColor = C_Border, InnerColor = C_Sub },
+            Location = new Point(288, 236),
+            Size = new Size(44, 22),
+            CheckedState = { FillColor = C_Text, InnerColor = Color.White },
+            UncheckedState = { FillColor = C_Light, InnerColor = Color.White },
         };
         _togTray.CheckedChanged += (_, _) => { _cfg.MinimizeToTray = _togTray.Checked; SaveCfg(_cfg); };
+        Controls.Add(_togTray);
 
-        settingsCard.Controls.AddRange([_lblSettingsHeader, _lblTogOn, _togOn, _lblTogTray, _togTray]);
-        Controls.Add(settingsCard);
-
-        // ── Status Card ──
-        var statusCard = MakeCard(20, 266, 360, 30);
-
+        // ── Status ──
         _statusDot = new Guna2CirclePictureBox
         {
             Size = new Size(10, 10),
-            Location = new Point(16, 10),
+            Location = new Point(28, 290),
+            BackColor = C_Bg,
             ShadowDecoration = { Enabled = false },
         };
+        Controls.Add(_statusDot);
 
         _lblStatus = new Label
         {
             Font = new Font("Segoe UI Variable Display", 9f, FontStyle.Bold),
-            BackColor = Color.Transparent,
-            Location = new Point(32, 6), AutoSize = true,
+            BackColor = C_Bg,
+            Location = new Point(44, 285), AutoSize = true,
         };
         UpdateStatus();
-
-        statusCard.Controls.AddRange([_statusDot, _lblStatus]);
-        Controls.Add(statusCard);
+        Controls.Add(_lblStatus);
 
         // ── Tray ──
         var menu = new ContextMenuStrip();
@@ -456,15 +451,6 @@ public sealed class MainForm : Form
     //  UI Helpers
     // ═══════════════════════════════════════════════════════════════════════
 
-    Guna2Panel MakeCard(int x, int y, int w, int h) => new()
-    {
-        Bounds = new Rectangle(x, y, w, h),
-        FillColor = C_Card,
-        BorderRadius = 8,
-        BorderColor = C_Border,
-        BorderThickness = 1,
-    };
-
     void LoadIcon()
     {
         var dir = Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
@@ -475,7 +461,7 @@ public sealed class MainForm : Form
     void UpdateStatus()
     {
         _lblStatus.Text = _on ? "READY" : "DISABLED";
-        _lblStatus.ForeColor = _on ? C_Green : C_Red;
+        _lblStatus.ForeColor = C_Text;
         _statusDot.BackColor = _on ? C_Green : C_Red;
     }
 
