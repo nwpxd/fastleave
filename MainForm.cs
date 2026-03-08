@@ -172,10 +172,12 @@ public sealed class MainForm : Form
 
     static readonly Color C_Bg      = Color.White;
     static readonly Color C_Text    = ColorTranslator.FromHtml("#111827");
-    static readonly Color C_Muted   = ColorTranslator.FromHtml("#6B7280");
+    static readonly Color C_Muted   = ColorTranslator.FromHtml("#9CA3AF");
     static readonly Color C_Light   = ColorTranslator.FromHtml("#E5E7EB");
+    static readonly Color C_Hover   = ColorTranslator.FromHtml("#F3F4F6");
     static readonly Color C_Green   = ColorTranslator.FromHtml("#22C55E");
     static readonly Color C_Red     = ColorTranslator.FromHtml("#EF4444");
+    static readonly Color C_Border  = ColorTranslator.FromHtml("#F0F0F0");
 
     // ═══════════════════════════════════════════════════════════════════════
     //  State
@@ -202,12 +204,13 @@ public sealed class MainForm : Form
 
         Text = "FastLeave";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(360, 420);
+        ClientSize = new Size(380, 480);
         BackColor = C_Bg;
         ForeColor = C_Text;
         Font = new Font("Segoe UI Variable Display", 10f);
         FormBorderStyle = FormBorderStyle.None;
         DoubleBuffered = true;
+        Padding = new Padding(0);
 
         LoadIcon();
 
@@ -218,10 +221,13 @@ public sealed class MainForm : Form
         }
         catch { }
 
-        // ── Title bar ──
+        const int L = 32;  // global left margin
+        const int R = 340; // right-align anchor for controls
+
+        // ── Custom chrome ──
         var titleBar = new Guna2Panel
         {
-            Bounds = new Rectangle(0, 0, 360, 52),
+            Bounds = new Rectangle(0, 0, 380, 60),
             BackColor = C_Bg,
             BorderRadius = 0,
         };
@@ -230,59 +236,58 @@ public sealed class MainForm : Form
         var lblTitle = new Label
         {
             Text = "FastLeave",
-            Font = new Font("Segoe UI Variable Display", 14f, FontStyle.Bold),
+            Font = new Font("Segoe UI Variable Display", 15f, FontStyle.Bold),
             ForeColor = C_Text,
             BackColor = Color.Transparent,
-            Location = new Point(24, 14), AutoSize = true,
+            Location = new Point(L, 18), AutoSize = true,
         };
 
         var lblVer = new Label
         {
-            Text = "v1.3.0",
+            Text = "v1.4.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Muted,
             BackColor = Color.Transparent,
-            Location = new Point(120, 20), AutoSize = true,
+            Location = new Point(130, 25), AutoSize = true,
         };
 
-        var btnMin = new Guna2Button
+        var cbMin = new Guna2ControlBox
         {
-            Text = "\u2013",
-            Font = new Font("Segoe UI", 11f),
-            ForeColor = C_Muted,
-            FillColor = Color.Transparent,
-            HoverState = { FillColor = C_Light, ForeColor = C_Text },
-            BorderRadius = 6,
-            Size = new Size(32, 32),
-            Location = new Point(284, 10),
+            ControlBoxType = Guna.UI2.WinForms.Enums.ControlBoxType.MinimizeBox,
+            IconColor = C_Text,
+            FillColor = C_Bg,
+            HoverState = { FillColor = C_Hover, IconColor = C_Text },
+            Size = new Size(36, 28),
+            Location = new Point(296, 16),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
         };
-        btnMin.Click += (_, _) => WindowState = FormWindowState.Minimized;
 
-        var btnClose = new Guna2Button
+        var cbClose = new Guna2ControlBox
         {
-            Text = "\u2715",
-            Font = new Font("Segoe UI", 10f),
-            ForeColor = C_Muted,
-            FillColor = Color.Transparent,
-            HoverState = { FillColor = C_Red, ForeColor = Color.White },
-            BorderRadius = 6,
-            Size = new Size(32, 32),
-            Location = new Point(318, 10),
+            ControlBoxType = Guna.UI2.WinForms.Enums.ControlBoxType.CloseBox,
+            IconColor = C_Text,
+            FillColor = C_Bg,
+            HoverState = { FillColor = C_Red, IconColor = Color.White },
+            Size = new Size(36, 28),
+            Location = new Point(334, 16),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
         };
-        btnClose.Click += (_, _) => Close();
 
-        titleBar.Controls.AddRange([lblTitle, lblVer, btnMin, btnClose]);
+        titleBar.Controls.AddRange([lblTitle, lblVer, cbMin, cbClose]);
         Controls.Add(titleBar);
 
-        // ── Trigger ──
-        Controls.Add(MakeHeader("TRIGGER", 28, 66));
+        // ── Divider under title ──
+        Controls.Add(MakeDivider(L, 62));
+
+        // ── Trigger section ──
+        Controls.Add(MakeHeader("TRIGGER", L, 76));
 
         Controls.Add(new Label
         {
             Text = "ESC",
-            Font = new Font("Segoe UI Variable Display", 28f, FontStyle.Bold),
+            Font = new Font("Segoe UI Variable Display", 32f, FontStyle.Bold),
             ForeColor = C_Text, BackColor = C_Bg,
-            Location = new Point(24, 84), AutoSize = true,
+            Location = new Point(L - 4, 96), AutoSize = true,
         });
 
         Controls.Add(new Label
@@ -290,30 +295,38 @@ public sealed class MainForm : Form
             Text = "Press Escape in-game to leave match",
             Font = new Font("Segoe UI Variable Display", 8.5f),
             ForeColor = C_Muted, BackColor = C_Bg,
-            Location = new Point(28, 128), AutoSize = true,
+            Location = new Point(L, 146), AutoSize = true,
         });
 
-        // ── Timing ──
-        Controls.Add(MakeHeader("TIMING (ms)", 28, 162));
+        // ── Divider ──
+        Controls.Add(MakeDivider(L, 174));
 
-        Controls.Add(MakeLabel("Start delay", 28, 186));
-        _txtStart = MakeNumBox(_cfg.StartDelayMs, 264, 182);
+        // ── Timing section ──
+        Controls.Add(MakeHeader("TIMING", L, 188));
+
+        Controls.Add(MakeLabel("Start delay", L, 216));
+        Controls.Add(MakeSuffix("ms", R, 218));
+        _txtStart = MakeNumBox(_cfg.StartDelayMs, R - 68, 210);
         _txtStart.TextChanged += (_, _) => { if (int.TryParse(_txtStart.Text, out int v) && v >= 0) { _cfg.StartDelayMs = v; SaveCfg(_cfg); } };
         Controls.Add(_txtStart);
 
-        Controls.Add(MakeLabel("Click delay", 28, 220));
-        _txtClick = MakeNumBox(_cfg.ClickDelayMs, 264, 216);
+        Controls.Add(MakeLabel("Click delay", L, 254));
+        Controls.Add(MakeSuffix("ms", R, 256));
+        _txtClick = MakeNumBox(_cfg.ClickDelayMs, R - 68, 248);
         _txtClick.TextChanged += (_, _) => { if (int.TryParse(_txtClick.Text, out int v) && v >= 0) { _cfg.ClickDelayMs = v; SaveCfg(_cfg); } };
         Controls.Add(_txtClick);
 
-        // ── Settings ──
-        Controls.Add(MakeHeader("SETTINGS", 28, 258));
+        // ── Divider ──
+        Controls.Add(MakeDivider(L, 290));
 
-        Controls.Add(MakeLabel("Enabled", 28, 282));
+        // ── Settings section ──
+        Controls.Add(MakeHeader("SETTINGS", L, 304));
+
+        Controls.Add(MakeLabel("Enabled", L, 332));
         _togOn = new Guna2ToggleSwitch
         {
             Checked = true,
-            Location = new Point(288, 280),
+            Location = new Point(R - 44, 330),
             Size = new Size(44, 22),
             CheckedState = { FillColor = C_Text, InnerColor = Color.White },
             UncheckedState = { FillColor = C_Light, InnerColor = Color.White },
@@ -321,11 +334,11 @@ public sealed class MainForm : Form
         _togOn.CheckedChanged += (_, _) => { _on = _togOn.Checked; UpdateStatus(); };
         Controls.Add(_togOn);
 
-        Controls.Add(MakeLabel("Minimize to tray", 28, 314));
+        Controls.Add(MakeLabel("Minimize to tray", L, 368));
         _togTray = new Guna2ToggleSwitch
         {
             Checked = _cfg.MinimizeToTray,
-            Location = new Point(288, 312),
+            Location = new Point(R - 44, 366),
             Size = new Size(44, 22),
             CheckedState = { FillColor = C_Text, InnerColor = Color.White },
             UncheckedState = { FillColor = C_Light, InnerColor = Color.White },
@@ -333,11 +346,14 @@ public sealed class MainForm : Form
         _togTray.CheckedChanged += (_, _) => { _cfg.MinimizeToTray = _togTray.Checked; SaveCfg(_cfg); };
         Controls.Add(_togTray);
 
+        // ── Divider ──
+        Controls.Add(MakeDivider(L, 404));
+
         // ── Status ──
         _statusDot = new Guna2CirclePictureBox
         {
             Size = new Size(10, 10),
-            Location = new Point(28, 362),
+            Location = new Point(L, 428),
             BackColor = C_Bg,
             ShadowDecoration = { Enabled = false },
         };
@@ -347,7 +363,7 @@ public sealed class MainForm : Form
         {
             Font = new Font("Segoe UI Variable Display", 9f, FontStyle.Bold),
             BackColor = C_Bg,
-            Location = new Point(44, 357), AutoSize = true,
+            Location = new Point(L + 18, 423), AutoSize = true,
         };
         UpdateStatus();
         Controls.Add(_lblStatus);
@@ -400,7 +416,7 @@ public sealed class MainForm : Form
     static Label MakeHeader(string text, int x, int y) => new()
     {
         Text = text,
-        Font = new Font("Segoe UI Variable Display", 7.5f, FontStyle.Bold),
+        Font = new Font("Segoe UI Variable Display", 7f, FontStyle.Bold),
         ForeColor = C_Muted, BackColor = C_Bg,
         Location = new Point(x, y), AutoSize = true,
     };
@@ -413,17 +429,32 @@ public sealed class MainForm : Form
         Location = new Point(x, y), AutoSize = true,
     };
 
+    static Label MakeSuffix(string text, int x, int y) => new()
+    {
+        Text = text,
+        Font = new Font("Segoe UI Variable Display", 8f),
+        ForeColor = C_Muted, BackColor = C_Bg,
+        Location = new Point(x, y), AutoSize = true,
+    };
+
     static Guna2TextBox MakeNumBox(int value, int x, int y) => new()
     {
         Text = value.ToString(),
-        Font = new Font("Segoe UI Variable Display", 9.5f),
+        Font = new Font("Segoe UI Variable Display", 9f),
         ForeColor = C_Text,
         FillColor = C_Bg,
         BorderColor = C_Light,
-        BorderRadius = 6,
-        Size = new Size(68, 30),
+        BorderRadius = 4,
+        Size = new Size(60, 28),
         Location = new Point(x, y),
         TextAlign = HorizontalAlignment.Center,
+    };
+
+    static Guna2Panel MakeDivider(int x, int y) => new()
+    {
+        Bounds = new Rectangle(x, y, 316, 1),
+        FillColor = C_Border,
+        BorderRadius = 0,
     };
 
     void LoadIcon()
