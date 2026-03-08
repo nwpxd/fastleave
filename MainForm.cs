@@ -16,7 +16,10 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
-    [DllImport("user32.dll")] static extern bool BlockInput(bool fBlockIt);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr hWnd, char[] buf, int max);
+    delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
     [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint Type; public INPUTUNION U; }
@@ -40,8 +43,25 @@ public sealed class MainForm : Form
     const int WM_HOTKEY = 0x0312, HK_ID = 1;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Macro Core — UNTOUCHED BACKEND LOGIC
+    //  Macro Core
     // ═══════════════════════════════════════════════════════════════════════
+
+    static void FocusFortnite()
+    {
+        IntPtr found = IntPtr.Zero;
+        var buf = new char[256];
+        EnumWindows((hWnd, _) =>
+        {
+            GetClassName(hWnd, buf, buf.Length);
+            if (new string(buf).TrimEnd('\0') == "UnrealWindow")
+            {
+                found = hWnd;
+                return false; // stop
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (found != IntPtr.Zero) SetForegroundWindow(found);
+    }
 
     static void PressKey(ushort vk)
     {
@@ -59,54 +79,51 @@ public sealed class MainForm : Form
         int ay = (int)((long)y * 65535 / sh);
         int sz = Marshal.SizeOf<INPUT>();
 
-        // Double-click via SendInput for reliability (SendInput bypasses BlockInput)
-        for (int i = 0; i < 2; i++)
-        {
-            var down = new INPUT[1];
-            down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
-            SendInput(1, down, sz);
-            Thread.Sleep(30);
+        // Move to position first
+        var move = new INPUT[1];
+        move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
+        SendInput(1, move, sz);
+        Thread.Sleep(20);
 
-            var up = new INPUT[1];
-            up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
-            SendInput(1, up, sz);
-            if (i == 0) Thread.Sleep(30);
-        }
+        // Click
+        var down = new INPUT[1];
+        down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+        SendInput(1, down, sz);
+        Thread.Sleep(40);
+
+        var up = new INPUT[1];
+        up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
+        SendInput(1, up, sz);
     }
 
     void RunLeave(Config cfg)
     {
         try
         {
-            // Block all physical input so user's mouse/keyboard can't interfere.
-            // SendInput still goes through. Unblocked in finally.
-            BlockInput(true);
+            // Ensure Fortnite is the foreground window before sending input
+            FocusFortnite();
+            Thread.Sleep(50);
 
-            // Run twice: first pass closes any sub-state (build mode, inventory, map),
-            // second pass opens the actual leave menu and clicks through it.
-            for (int pass = 0; pass < 2; pass++)
-            {
-                Thread.Sleep(30);
+            // Escape twice — first closes any sub-state (build, inventory, map),
+            // second opens the side panel menu
+            PressKey(0x1B);
+            Thread.Sleep(200);
+            PressKey(0x1B);
+            Thread.Sleep(cfg.EscapeDelayMs);
 
-                // Step 1: Escape — open side panel (or close sub-state on 1st pass)
-                PressKey(0x1B);
-                Thread.Sleep(cfg.EscapeDelayMs);
+            // Click exit door icon
+            ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
+            Thread.Sleep(cfg.ClickDelayMs);
 
-                // Step 2: Click exit door icon
-                ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-                Thread.Sleep(cfg.ClickDelayMs);
+            // Click "Return to lobby"
+            ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
+            Thread.Sleep(cfg.ClickDelayMs);
 
-                // Step 3: Click "Return to lobby"
-                ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-                Thread.Sleep(cfg.ClickDelayMs);
-
-                // Step 4: Click "Yes"
-                ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
-            }
+            // Click "Yes"
+            ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
         }
         finally
         {
-            BlockInput(false);
             Interlocked.Exchange(ref _running, 0);
         }
     }
@@ -259,7 +276,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v0.5.1",
+            Text = "v0.6.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
