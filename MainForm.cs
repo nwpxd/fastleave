@@ -351,7 +351,7 @@ public sealed class MainForm : Form
         // ── Version ──
         _lblVer = new Label
         {
-            Text = "v1.0.0",
+            Text = "v0.1.0",
             Font = new Font("Segoe UI", 7.5f),
             ForeColor = T.Dim,
             BackColor = Color.Transparent,
