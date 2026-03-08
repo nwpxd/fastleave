@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Drawing.Drawing2D;
 
 namespace FastLeave;
 
@@ -12,13 +13,9 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mod, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] i, int sz);
-    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
-    [DllImport("user32.dll")] static extern IntPtr FindWindow(string? cls, string? title);
-    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
-    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
@@ -43,7 +40,7 @@ public sealed class MainForm : Form
     const int WM_HOTKEY = 0x0312, HK_ID = 1;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Input — The macro core. This is the part that matters.
+    //  Macro Core
     // ═══════════════════════════════════════════════════════════════════════
 
     static void PressKey(ushort vk)
@@ -54,117 +51,68 @@ public sealed class MainForm : Form
         SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
-    /// Move cursor to (x,y) and click.
     static void ClickAt(int x, int y)
     {
         int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
         int ax = (int)((long)x * 65535 / sw);
         int ay = (int)((long)y * 65535 / sh);
 
-        // Move to target position
+        // Move to position
         var move = new INPUT[1];
         move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
         SendInput(1, move, Marshal.SizeOf<INPUT>());
-        Thread.Sleep(20);
+        Thread.Sleep(15);
 
-        // Click at current position
+        // Click with position included
         var click = new INPUT[2];
         click[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
         click[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
         SendInput(2, click, Marshal.SizeOf<INPUT>());
     }
 
-    /// Returns true if user is touching mouse or keyboard — macro should abort.
     static bool UserInterrupted()
     {
-        // Mouse buttons, WASD, arrows, Escape, Space
         int[] keys = [0x01, 0x02, 0x57, 0x41, 0x53, 0x44, 0x25, 0x26, 0x27, 0x28, 0x1B, 0x20];
         foreach (int k in keys)
             if ((GetAsyncKeyState(k) & 0x8000) != 0) return true;
         return false;
     }
 
-    /// Sleep in 15ms chunks, abort early if user does anything.
     static bool Wait(int ms)
     {
         int elapsed = 0;
         while (elapsed < ms)
         {
-            Thread.Sleep(15);
-            elapsed += 15;
+            Thread.Sleep(10);
+            elapsed += 10;
             if (UserInterrupted()) return false;
         }
         return true;
     }
 
-    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
-    [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder sb, int max);
-    [DllImport("user32.dll")] static extern int GetClassName(IntPtr h, System.Text.StringBuilder sb, int max);
-    delegate bool EnumWindowsProc(IntPtr h, IntPtr lp);
-
-    /// Focus Fortnite before sending inputs.
-    static void FocusFortnite()
-    {
-        IntPtr found = IntPtr.Zero;
-        EnumWindows((h, _) =>
-        {
-            var cls = new System.Text.StringBuilder(256);
-            GetClassName(h, cls, 256);
-            if (cls.ToString() == "UnrealWindow")
-            {
-                var title = new System.Text.StringBuilder(256);
-                GetWindowText(h, title, 256);
-                if (title.ToString().Contains("Fortnite", StringComparison.OrdinalIgnoreCase))
-                {
-                    found = h;
-                    return false;
-                }
-            }
-            return true;
-        }, IntPtr.Zero);
-
-        if (found != IntPtr.Zero && GetForegroundWindow() != found)
-        {
-            SetForegroundWindow(found);
-            Thread.Sleep(80);
-        }
-    }
-
-    /// Run one full leave attempt. Returns true if not interrupted.
-    static bool DoLeaveAttempt(Config cfg, int escDelay)
-    {
-        PressKey(0x1B);
-        if (!Wait(escDelay)) return false;
-
-        ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
-        if (!Wait(cfg.ClickDelayMs)) return false;
-
-        ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
-        if (!Wait(cfg.ClickDelayMs)) return false;
-
-        ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
-        return true;
-    }
-
-    /// THE MACRO — runs the sequence twice to handle cases where
-    /// first Escape closes a sub-state (build mode, inventory, map)
-    /// instead of opening the leave menu.
+    /// Single-attempt macro. No retry, no focus stealing.
+    /// Fortnite is already focused because user just pressed the hotkey in-game.
     void RunLeave(Config cfg)
     {
         try
         {
-            // Focus Fortnite first so inputs go to the game
-            FocusFortnite();
+            // Small delay to let the hotkey release settle
+            Thread.Sleep(30);
 
-            // Attempt 1: Full sequence
-            if (!DoLeaveAttempt(cfg, cfg.EscapeDelayMs)) return;
+            // Step 1: Escape — open side panel
+            PressKey(0x1B);
+            if (!Wait(cfg.EscapeDelayMs)) return;
 
-            // Brief pause then attempt 2: catches the case where
-            // attempt 1's Escape only closed a sub-menu.
-            // If attempt 1 already worked, we're in loading screen
-            // and these inputs do nothing harmful.
-            if (!Wait(100)) return;
-            DoLeaveAttempt(cfg, cfg.EscapeDelayMs);
+            // Step 2: Click exit door icon (top-right)
+            ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
+            if (!Wait(cfg.ClickDelayMs)) return;
+
+            // Step 3: Click "Return to lobby"
+            ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
+            if (!Wait(cfg.ClickDelayMs)) return;
+
+            // Step 4: Click "Yes"
+            ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
         }
         finally
         {
@@ -234,14 +182,17 @@ public sealed class MainForm : Form
 
     static class T
     {
-        public static readonly Color Bg      = Color.FromArgb(18, 18, 22);
-        public static readonly Color Card    = Color.FromArgb(28, 28, 34);
-        public static readonly Color Border  = Color.FromArgb(48, 48, 56);
-        public static readonly Color Text    = Color.FromArgb(235, 235, 240);
-        public static readonly Color Dim     = Color.FromArgb(120, 120, 130);
-        public static readonly Color Accent  = Color.FromArgb(99, 102, 241);
-        public static readonly Color Green   = Color.FromArgb(34, 197, 94);
-        public static readonly Color Red     = Color.FromArgb(239, 68, 68);
+        public static readonly Color Bg       = Color.FromArgb(12, 12, 16);
+        public static readonly Color Card     = Color.FromArgb(22, 22, 28);
+        public static readonly Color CardHi   = Color.FromArgb(30, 30, 38);
+        public static readonly Color Border   = Color.FromArgb(42, 42, 52);
+        public static readonly Color Text     = Color.FromArgb(240, 240, 245);
+        public static readonly Color Sub      = Color.FromArgb(160, 160, 175);
+        public static readonly Color Dim      = Color.FromArgb(90, 90, 105);
+        public static readonly Color Accent   = Color.FromArgb(90, 95, 238);
+        public static readonly Color AccentHi = Color.FromArgb(120, 125, 255);
+        public static readonly Color Green    = Color.FromArgb(34, 197, 94);
+        public static readonly Color Red      = Color.FromArgb(239, 68, 68);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -252,14 +203,14 @@ public sealed class MainForm : Form
     bool _on = true, _capturing;
     int _running;
 
-    readonly Label _lblKey, _lblStatus, _lblVer;
+    readonly Label _lblKey, _lblKeyVal, _lblStatus, _lblStatusDot, _lblVer, _lblTitle;
     readonly Button _btnSet;
     readonly CheckBox _chkOn, _chkTray;
     readonly NotifyIcon _tray;
     readonly System.Windows.Forms.Timer _capTimer;
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  UI
+    //  UI — Modern dark design
     // ═══════════════════════════════════════════════════════════════════════
 
     public MainForm()
@@ -271,94 +222,125 @@ public sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(360, 220);
+        ClientSize = new Size(380, 340);
         BackColor = T.Bg;
         ForeColor = T.Text;
         Font = new Font("Segoe UI", 10f);
-        Padding = new Padding(24, 20, 24, 12);
 
         LoadIcon();
         try { int v = 1; DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { }
 
-        // ── Card panel ──
-        var card = new Panel
+        // ── Header with gradient accent bar ──
+        var header = new Panel { Bounds = new Rectangle(0, 0, 380, 56), BackColor = T.Bg };
+        header.Paint += (_, e) =>
         {
-            Bounds = new Rectangle(16, 12, 328, 152),
-            BackColor = T.Card,
+            using var brush = new LinearGradientBrush(
+                new Point(0, 0), new Point(380, 0),
+                Color.FromArgb(60, T.Accent), Color.FromArgb(0, T.Accent));
+            e.Graphics.FillRectangle(brush, 0, 0, 380, 56);
         };
-        card.Paint += (_, e) =>
-        {
-            using var pen = new Pen(T.Border, 1);
-            var r = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
-            int radius = 12;
-            using var path = RoundedRect(r, radius);
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            e.Graphics.FillPath(new SolidBrush(T.Card), path);
-            e.Graphics.DrawPath(pen, path);
-        };
-        card.Region = CreateRoundRegion(328, 152, 12);
 
-        // ── Row 1: Hotkey ──
-        _lblKey = new Label
+        _lblTitle = new Label
         {
-            Text = $"Hotkey   {VkName(_cfg.HotkeyVk)}",
-            Font = new Font("Segoe UI Semibold", 10.5f),
+            Text = "FastLeave",
+            Font = new Font("Segoe UI Semibold", 14f),
             ForeColor = T.Text,
             BackColor = Color.Transparent,
-            Location = new Point(16, 14), Size = new Size(190, 26),
+            Location = new Point(20, 14), AutoSize = true,
+        };
+        header.Controls.Add(_lblTitle);
+
+        _lblVer = new Label
+        {
+            Text = "v0.3.0",
+            Font = new Font("Segoe UI", 8f),
+            ForeColor = T.Dim,
+            BackColor = Color.Transparent,
+            Location = new Point(320, 20), AutoSize = true,
+        };
+        header.Controls.Add(_lblVer);
+        Controls.Add(header);
+
+        // ── Hotkey Card ──
+        var hotkeyCard = MakeCard(20, 66, 340, 72);
+
+        _lblKey = new Label
+        {
+            Text = "HOTKEY",
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = T.Dim,
+            BackColor = Color.Transparent,
+            Location = new Point(16, 10), AutoSize = true,
+        };
+
+        _lblKeyVal = new Label
+        {
+            Text = VkName(_cfg.HotkeyVk),
+            Font = new Font("Segoe UI Semibold", 16f),
+            ForeColor = T.AccentHi,
+            BackColor = Color.Transparent,
+            Location = new Point(14, 30), AutoSize = true,
         };
 
         _btnSet = new Button
         {
             Text = "Set Key",
-            Font = new Font("Segoe UI", 9f),
+            Font = new Font("Segoe UI Semibold", 9f),
             FlatStyle = FlatStyle.Flat,
-            BackColor = T.Border,
+            BackColor = T.Accent,
             ForeColor = T.Text,
             Cursor = Cursors.Hand,
-            Bounds = new Rectangle(216, 12, 96, 30),
+            Bounds = new Rectangle(230, 22, 94, 34),
         };
         _btnSet.FlatAppearance.BorderSize = 0;
-        _btnSet.FlatAppearance.MouseOverBackColor = T.Accent;
+        _btnSet.FlatAppearance.MouseOverBackColor = T.AccentHi;
         _btnSet.Click += (_, _) => StartCapture();
 
-        // ── Divider ──
-        var div = new Panel
+        hotkeyCard.Controls.AddRange([_lblKey, _lblKeyVal, _btnSet]);
+        Controls.Add(hotkeyCard);
+
+        // ── Settings Card ──
+        var settingsCard = MakeCard(20, 150, 340, 88);
+
+        var lblSettings = new Label
         {
-            BackColor = T.Border, Bounds = new Rectangle(16, 52, 296, 1),
-        };
-
-        // ── Row 2: Enabled ──
-        _chkOn = Chk("Enabled", 16, 62, true);
-        _chkOn.CheckedChanged += (_, _) => { _on = _chkOn.Checked; Status(); };
-
-        // ── Row 3: Tray ──
-        _chkTray = Chk("Minimize to tray", 16, 92, _cfg.MinimizeToTray);
-        _chkTray.CheckedChanged += (_, _) => { _cfg.MinimizeToTray = _chkTray.Checked; SaveCfg(_cfg); };
-
-        // ── Status ──
-        _lblStatus = new Label
-        {
-            Font = new Font("Segoe UI Semibold", 11f),
-            BackColor = Color.Transparent,
-            Location = new Point(16, 122), Size = new Size(296, 26),
-        };
-        Status();
-
-        card.Controls.AddRange([_lblKey, _btnSet, div, _chkOn, _chkTray, _lblStatus]);
-        Controls.Add(card);
-
-        // ── Version ──
-        _lblVer = new Label
-        {
-            Text = "v0.2.1",
-            Font = new Font("Segoe UI", 7.5f),
+            Text = "SETTINGS",
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             ForeColor = T.Dim,
             BackColor = Color.Transparent,
-            TextAlign = ContentAlignment.BottomRight,
-            Bounds = new Rectangle(270, 172, 80, 20),
+            Location = new Point(16, 10), AutoSize = true,
         };
-        Controls.Add(_lblVer);
+
+        _chkOn = Chk("Enabled", 16, 34, true);
+        _chkOn.CheckedChanged += (_, _) => { _on = _chkOn.Checked; UpdateStatus(); };
+
+        _chkTray = Chk("Minimize to tray", 16, 58, _cfg.MinimizeToTray);
+        _chkTray.CheckedChanged += (_, _) => { _cfg.MinimizeToTray = _chkTray.Checked; SaveCfg(_cfg); };
+
+        settingsCard.Controls.AddRange([lblSettings, _chkOn, _chkTray]);
+        Controls.Add(settingsCard);
+
+        // ── Status Card ──
+        var statusCard = MakeCard(20, 250, 340, 56);
+
+        _lblStatusDot = new Label
+        {
+            Text = "\u25CF",
+            Font = new Font("Segoe UI", 14f),
+            BackColor = Color.Transparent,
+            Location = new Point(14, 12), AutoSize = true,
+        };
+
+        _lblStatus = new Label
+        {
+            Font = new Font("Segoe UI Semibold", 12f),
+            BackColor = Color.Transparent,
+            Location = new Point(38, 16), AutoSize = true,
+        };
+        UpdateStatus();
+
+        statusCard.Controls.AddRange([_lblStatusDot, _lblStatus]);
+        Controls.Add(statusCard);
 
         // ── Tray ──
         var menu = new ContextMenuStrip();
@@ -378,22 +360,44 @@ public sealed class MainForm : Form
         _capTimer = new System.Windows.Forms.Timer { Interval = 40 };
         _capTimer.Tick += CaptureKey;
 
-        // ── Hotkey ──
+        // ── Register hotkey ──
         if (!RegisterHotKey(Handle, HK_ID, 0, _cfg.HotkeyVk))
         {
             _lblStatus.Text = "HOTKEY CONFLICT";
             _lblStatus.ForeColor = T.Red;
+            _lblStatusDot.ForeColor = T.Red;
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Helpers
+    //  UI Helpers
     // ═══════════════════════════════════════════════════════════════════════
+
+    Panel MakeCard(int x, int y, int w, int h)
+    {
+        var card = new Panel
+        {
+            Bounds = new Rectangle(x, y, w, h),
+            BackColor = T.Card,
+        };
+        card.Paint += (_, e) =>
+        {
+            var r = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
+            using var path = RoundedRect(r, 10);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var fill = new SolidBrush(T.Card);
+            e.Graphics.FillPath(fill, path);
+            using var pen = new Pen(T.Border, 1);
+            e.Graphics.DrawPath(pen, path);
+        };
+        card.Region = CreateRoundRegion(w, h, 10);
+        return card;
+    }
 
     CheckBox Chk(string text, int x, int y, bool on) => new()
     {
-        Text = text, Location = new Point(x, y), Size = new Size(220, 24),
-        Checked = on, ForeColor = T.Text, BackColor = Color.Transparent,
+        Text = text, Location = new Point(x, y), Size = new Size(240, 22),
+        Checked = on, ForeColor = T.Sub, BackColor = Color.Transparent,
         Font = new Font("Segoe UI", 9.5f),
     };
 
@@ -404,15 +408,16 @@ public sealed class MainForm : Form
             if (File.Exists(p)) { try { Icon = new Icon(p); return; } catch { } }
     }
 
-    void Status()
+    void UpdateStatus()
     {
         _lblStatus.Text = _on ? "READY" : "DISABLED";
         _lblStatus.ForeColor = _on ? T.Green : T.Red;
+        _lblStatusDot.ForeColor = _on ? T.Green : T.Red;
     }
 
-    static System.Drawing.Drawing2D.GraphicsPath RoundedRect(Rectangle r, int rad)
+    static GraphicsPath RoundedRect(Rectangle r, int rad)
     {
-        var p = new System.Drawing.Drawing2D.GraphicsPath();
+        var p = new GraphicsPath();
         int d = rad * 2;
         p.AddArc(r.X, r.Y, d, d, 180, 90);
         p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
@@ -471,8 +476,8 @@ public sealed class MainForm : Form
     void StartCapture()
     {
         _capturing = true;
-        _btnSet.Text = "Press key...";
-        _btnSet.BackColor = T.Accent;
+        _btnSet.Text = "Press...";
+        _btnSet.BackColor = T.AccentHi;
         UnregisterHotKey(Handle, HK_ID);
         _capTimer.Start();
     }
@@ -487,9 +492,9 @@ public sealed class MainForm : Form
                 _cfg.HotkeyVk = (uint)vk;
                 SaveCfg(_cfg);
                 RegisterHotKey(Handle, HK_ID, 0, _cfg.HotkeyVk);
-                _lblKey.Text = $"Hotkey   {VkName(_cfg.HotkeyVk)}";
+                _lblKeyVal.Text = VkName(_cfg.HotkeyVk);
                 _btnSet.Text = "Set Key";
-                _btnSet.BackColor = T.Border;
+                _btnSet.BackColor = T.Accent;
                 _capturing = false;
                 _capTimer.Stop();
                 return;
