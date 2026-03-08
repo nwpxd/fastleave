@@ -56,18 +56,24 @@ public sealed class MainForm : Form
         int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
         int ax = (int)((long)x * 65535 / sw);
         int ay = (int)((long)y * 65535 / sh);
+        int sz = Marshal.SizeOf<INPUT>();
 
         // Move to position
         var move = new INPUT[1];
         move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
-        SendInput(1, move, Marshal.SizeOf<INPUT>());
-        Thread.Sleep(15);
+        SendInput(1, move, sz);
+        Thread.Sleep(20);
 
-        // Click with position included
-        var click = new INPUT[2];
-        click[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
-        click[1] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
-        SendInput(2, click, Marshal.SizeOf<INPUT>());
+        // Mouse down — separate call so game registers the press
+        var down = new INPUT[1];
+        down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+        SendInput(1, down, sz);
+        Thread.Sleep(30);
+
+        // Mouse up — separate call so game registers the release
+        var up = new INPUT[1];
+        up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
+        SendInput(1, up, sz);
     }
 
     static bool UserInterrupted()
@@ -124,14 +130,17 @@ public sealed class MainForm : Form
     //  Config
     // ═══════════════════════════════════════════════════════════════════════
 
+    const int CFG_VERSION = 4;
+
     sealed class Config
     {
+        public int Version { get; set; } = CFG_VERSION;
         public uint HotkeyVk { get; set; } = 0x75;         // F6
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
         public int EscapeDelayMs { get; set; } = 600;
-        public int ClickDelayMs { get; set; } = 200;
+        public int ClickDelayMs { get; set; } = 250;
         public bool MinimizeToTray { get; set; } = true;
     }
 
@@ -145,7 +154,18 @@ public sealed class MainForm : Form
 
     static Config LoadCfg()
     {
-        try { return JsonSerializer.Deserialize<Config>(File.ReadAllText(CfgPath()), _jo) ?? new(); }
+        try
+        {
+            var c = JsonSerializer.Deserialize<Config>(File.ReadAllText(CfgPath()), _jo) ?? new();
+            if (c.Version < CFG_VERSION)
+            {
+                // Keep user's hotkey, reset timing to new defaults
+                var fresh = new Config { HotkeyVk = c.HotkeyVk, MinimizeToTray = c.MinimizeToTray };
+                SaveCfg(fresh);
+                return fresh;
+            }
+            return c;
+        }
         catch { var c = new Config(); SaveCfg(c); return c; }
     }
 
@@ -228,7 +248,12 @@ public sealed class MainForm : Form
         Font = new Font("Segoe UI", 10f);
 
         LoadIcon();
-        try { int v = 1; DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { }
+        try
+        {
+            int dark = 1; DwmSetWindowAttribute(Handle, 20, ref dark, 4);
+            int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, 4); // DWMWCP_ROUND
+        }
+        catch { }
 
         // ── Header with gradient accent bar ──
         var header = new Panel { Bounds = new Rectangle(0, 0, 380, 56), BackColor = T.Bg };
@@ -252,7 +277,7 @@ public sealed class MainForm : Form
 
         _lblVer = new Label
         {
-            Text = "v0.3.0",
+            Text = "v0.3.1",
             Font = new Font("Segoe UI", 8f),
             ForeColor = T.Dim,
             BackColor = Color.Transparent,
