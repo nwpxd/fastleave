@@ -182,8 +182,8 @@ public sealed class MainForm : Form
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
-        public int EscapeDelayMs { get; set; } = 500;
-        public int ClickDelayMs { get; set; } = 150;
+        public int EscapeDelayMs { get; set; } = 600;
+        public int ClickDelayMs { get; set; } = 200;
         public bool MinimizeToTray { get; set; } = true;
     }
 
@@ -351,7 +351,7 @@ public sealed class MainForm : Form
         // ── Version ──
         _lblVer = new Label
         {
-            Text = "v0.2.0",
+            Text = "v0.2.1",
             Font = new Font("Segoe UI", 7.5f),
             ForeColor = T.Dim,
             BackColor = Color.Transparent,
