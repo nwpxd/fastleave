@@ -16,6 +16,9 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] static extern IntPtr FindWindow(string? cls, string? title);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
@@ -103,12 +106,30 @@ public sealed class MainForm : Form
         return true;
     }
 
+    /// Focus Fortnite before sending inputs.
+    static void FocusFortnite()
+    {
+        // Try common Fortnite window names
+        IntPtr hw = FindWindow("UnrealWindow", "Fortnite  ");
+        if (hw == IntPtr.Zero) hw = FindWindow("UnrealWindow", null);
+        if (hw != IntPtr.Zero && GetForegroundWindow() != hw)
+        {
+            SetForegroundWindow(hw);
+            Thread.Sleep(50);
+        }
+    }
+
     /// THE MACRO — fast, aborts instantly if user touches input.
     void RunLeave(Config cfg)
     {
         try
         {
-            // Step 1: Escape
+            // Focus Fortnite first so inputs go to the game
+            FocusFortnite();
+
+            // Step 1: Press Escape twice — first clears any sub-state, second opens menu
+            PressKey(0x1B);
+            Thread.Sleep(100);
             PressKey(0x1B);
             if (!Wait(cfg.EscapeDelayMs)) return;
 
@@ -139,7 +160,7 @@ public sealed class MainForm : Form
         public int[] ExitBtn { get; set; } = [1832, 76];
         public int[] ReturnBtn { get; set; } = [1570, 384];
         public int[] YesBtn { get; set; } = [1574, 922];
-        public int EscapeDelayMs { get; set; } = 400;
+        public int EscapeDelayMs { get; set; } = 600;
         public int ClickDelayMs { get; set; } = 300;
         public bool MinimizeToTray { get; set; } = true;
     }
