@@ -14,8 +14,7 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
     [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] i, int sz);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
-    [DllImport("user32.dll")] static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr extra);
-    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
     [DllImport("user32.dll")] static extern bool BlockInput(bool fBlockIt);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
@@ -35,8 +34,9 @@ public sealed class MainForm : Form
         public ushort wVk, wScan; public uint dwFlags, time; public IntPtr extra;
     }
 
-    const uint INPUT_KB = 1;
+    const uint INPUT_KB = 1, INPUT_MOUSE = 0;
     const uint KEYUP = 0x0002;
+    const uint MDOWN = 0x0002, MUP = 0x0004, MMOVE = 0x0001, MABS = 0x8000;
     const int WM_HOTKEY = 0x0312, HK_ID = 1;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -54,14 +54,22 @@ public sealed class MainForm : Form
 
     static void ClickAt(int x, int y)
     {
-        // Double-click for reliability — click twice at each position
+        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
+        int ax = (int)((long)x * 65535 / sw);
+        int ay = (int)((long)y * 65535 / sh);
+        int sz = Marshal.SizeOf<INPUT>();
+
+        // Double-click via SendInput for reliability (SendInput bypasses BlockInput)
         for (int i = 0; i < 2; i++)
         {
-            SetCursorPos(x, y);
-            Thread.Sleep(10);
-            mouse_event(0x0002, 0, 0, 0, IntPtr.Zero); // LEFTDOWN
+            var down = new INPUT[1];
+            down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
+            SendInput(1, down, sz);
             Thread.Sleep(30);
-            mouse_event(0x0004, 0, 0, 0, IntPtr.Zero); // LEFTUP
+
+            var up = new INPUT[1];
+            up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
+            SendInput(1, up, sz);
             if (i == 0) Thread.Sleep(30);
         }
     }
@@ -251,7 +259,7 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v0.5.0",
+            Text = "v0.5.1",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
