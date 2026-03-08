@@ -14,8 +14,10 @@ public sealed class MainForm : Form
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Auto)] static extern int GetClassName(IntPtr hWnd, char[] buf, int max);
+    [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
     delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, uint a, ref int v, int s);
 
@@ -34,14 +36,15 @@ public sealed class MainForm : Form
         public ushort wVk, wScan; public uint dwFlags, time; public IntPtr extra;
     }
 
-    const uint INPUT_MOUSE = 0;
+    const uint INPUT_KB = 1, INPUT_MOUSE = 0;
+    const uint KEYUP = 0x0002;
     const uint MDOWN = 0x0002, MUP = 0x0004, MMOVE = 0x0001, MABS = 0x8000;
 
     // ═══════════════════════════════════════════════════════════════════════
     //  Macro Core
     // ═══════════════════════════════════════════════════════════════════════
 
-    static void FocusFortnite()
+    static IntPtr FindFortnite()
     {
         IntPtr found = IntPtr.Zero;
         var buf = new char[256];
@@ -55,7 +58,22 @@ public sealed class MainForm : Form
             }
             return true;
         }, IntPtr.Zero);
-        if (found != IntPtr.Zero) SetForegroundWindow(found);
+        return found;
+    }
+
+    static bool IsFortniteActive()
+    {
+        var fn = FindFortnite();
+        return fn != IntPtr.Zero && GetForegroundWindow() == fn;
+    }
+
+    static void PressKey(ushort vk)
+    {
+        ushort scan = (ushort)MapVirtualKey(vk, 0);
+        var a = new INPUT[2];
+        a[0] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, wScan = scan } } };
+        a[1] = new() { Type = INPUT_KB, U = new() { Ki = new() { wVk = vk, wScan = scan, dwFlags = KEYUP } } };
+        SendInput(2, a, Marshal.SizeOf<INPUT>());
     }
 
     static void ClickAt(int x, int y)
@@ -69,15 +87,14 @@ public sealed class MainForm : Form
         var move = new INPUT[1];
         move[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS } } };
         SendInput(1, move, sz);
-        Thread.Sleep(20);
+        Thread.Sleep(30);
 
-        // Mouse down
+        // Click
         var down = new INPUT[1];
         down[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MDOWN } } };
         SendInput(1, down, sz);
-        Thread.Sleep(40);
+        Thread.Sleep(50);
 
-        // Mouse up
         var up = new INPUT[1];
         up[0] = new() { Type = INPUT_MOUSE, U = new() { Mi = new() { dx = ax, dy = ay, dwFlags = MMOVE | MABS | MUP } } };
         SendInput(1, up, sz);
@@ -87,20 +104,41 @@ public sealed class MainForm : Form
     {
         try
         {
-            // User already pressed Escape — the side panel is opening.
-            // Just wait for it, then click through the 3 buttons.
-            FocusFortnite();
+            // User pressed Escape. It may have opened the side panel (normal)
+            // or closed a sub-state (build/inventory/map). Either way:
+            // wait for that to finish, then send our own Escape.
+            // If menu was already open → our Escape closes it, we send another to reopen.
+            // If sub-state closed → our Escape opens the menu. Done.
+            // Net effect: we always end with the side panel open.
+
+            Thread.Sleep(300);
+
+            // Send Escape to guarantee side panel opens
+            PressKey(0x1B);
             Thread.Sleep(cfg.EscapeDelayMs);
 
-            // Click exit door icon
+            // If user's Escape already opened the panel, ours just closed it.
+            // Click the exit icon — if panel is open it works, if not it's harmless.
             ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
             Thread.Sleep(cfg.ClickDelayMs);
 
-            // Click "Return to lobby"
             ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
             Thread.Sleep(cfg.ClickDelayMs);
 
-            // Click "Yes"
+            ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
+            Thread.Sleep(200);
+
+            // Safety pass: if our Escape toggled the menu wrong way,
+            // send Escape again and redo clicks
+            PressKey(0x1B);
+            Thread.Sleep(cfg.EscapeDelayMs);
+
+            ClickAt(cfg.ExitBtn[0], cfg.ExitBtn[1]);
+            Thread.Sleep(cfg.ClickDelayMs);
+
+            ClickAt(cfg.ReturnBtn[0], cfg.ReturnBtn[1]);
+            Thread.Sleep(cfg.ClickDelayMs);
+
             ClickAt(cfg.YesBtn[0], cfg.YesBtn[1]);
         }
         finally
@@ -156,17 +194,13 @@ public sealed class MainForm : Form
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  Theme Colors
+    //  Theme Colors — Ultra-minimalist light
     // ═══════════════════════════════════════════════════════════════════════
 
-    static readonly Color C_Bg      = ColorTranslator.FromHtml("#1E1E1E");
-    static readonly Color C_Card    = ColorTranslator.FromHtml("#252526");
-    static readonly Color C_Border  = ColorTranslator.FromHtml("#333333");
-    static readonly Color C_Text    = ColorTranslator.FromHtml("#E0E0E0");
-    static readonly Color C_Sub     = ColorTranslator.FromHtml("#9E9E9E");
-    static readonly Color C_Dim     = ColorTranslator.FromHtml("#666666");
-    static readonly Color C_Accent  = ColorTranslator.FromHtml("#5C5CFF");
-    static readonly Color C_AccHi   = ColorTranslator.FromHtml("#7B7BFF");
+    static readonly Color C_Bg      = Color.White;
+    static readonly Color C_Text    = ColorTranslator.FromHtml("#111827");
+    static readonly Color C_Muted   = ColorTranslator.FromHtml("#6B7280");
+    static readonly Color C_Light   = ColorTranslator.FromHtml("#E5E7EB");
     static readonly Color C_Green   = ColorTranslator.FromHtml("#22C55E");
     static readonly Color C_Red     = ColorTranslator.FromHtml("#EF4444");
 
@@ -233,12 +267,25 @@ public sealed class MainForm : Form
 
         var lblVer = new Label
         {
-            Text = "v1.0.0",
+            Text = "v1.1.0",
             Font = new Font("Segoe UI Variable Display", 8f),
             ForeColor = C_Dim,
             BackColor = Color.Transparent,
             Location = new Point(312, 18), AutoSize = true,
         };
+
+        var btnMin = new Guna2Button
+        {
+            Text = "\u2013",
+            Font = new Font("Segoe UI", 10f),
+            ForeColor = C_Sub,
+            FillColor = Color.Transparent,
+            HoverState = { FillColor = C_Border, ForeColor = Color.White },
+            BorderRadius = 6,
+            Size = new Size(32, 32),
+            Location = new Point(322, 10),
+        };
+        btnMin.Click += (_, _) => WindowState = FormWindowState.Minimized;
 
         var btnClose = new Guna2Button
         {
@@ -253,7 +300,7 @@ public sealed class MainForm : Form
         };
         btnClose.Click += (_, _) => Close();
 
-        titleBar.Controls.AddRange([lblTitle, lblVer, btnClose]);
+        titleBar.Controls.AddRange([lblTitle, lblVer, btnMin, btnClose]);
         Controls.Add(titleBar);
 
         // ── Trigger Card ──
@@ -389,8 +436,9 @@ public sealed class MainForm : Form
 
     void PollEscape(object? s, EventArgs e)
     {
-        // Check if Escape was pressed (bit 0 = toggled since last call)
+        // Only trigger when Escape pressed AND Fortnite is the active window
         if (_on && (GetAsyncKeyState(0x1B) & 1) != 0 &&
+            IsFortniteActive() &&
             Interlocked.CompareExchange(ref _running, 1, 0) == 0)
         {
             Task.Run(() => RunLeave(_cfg));
